@@ -8,6 +8,7 @@ const MensajeSchema = new Schema(
       ref: "Tenant",
       required: true,
     },
+    key: { type: String, required: true },
     nombre: { type: String },
     telefono: { type: String, required: true },
     timestamp: {

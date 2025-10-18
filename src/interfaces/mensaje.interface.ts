@@ -2,6 +2,7 @@ import { Document, Types } from "mongoose";
 
 export interface IMensaje extends Document {
   tenant_id: Types.ObjectId;
+  key: String;
   nombre: string;
   telefono: string;
   timestamp: Date;

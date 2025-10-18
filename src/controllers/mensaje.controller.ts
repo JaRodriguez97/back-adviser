@@ -6,7 +6,7 @@ import { Types } from "mongoose";
 
 export const recibirMensaje = async (req: any, res: Response) => {
   try {
-    const { tenant_id, telefono, nombre, timestamp, contenido } =
+    const { tenant_id, telefono, nombre, timestamp, contenido, key } =
         req.body as IMensaje,
       respuesta = "Mensaje recibido correctamente";
     // Verificar si el cliente existe, si no, crearlo
@@ -22,6 +22,7 @@ export const recibirMensaje = async (req: any, res: Response) => {
     // Crear el registro del mensaje
     const nuevoMensaje = await MensajeModel.create({
       tenant_id: new Types.ObjectId(tenant_id),
+      key,
       nombre,
       telefono,
       timestamp,
@@ -32,7 +33,7 @@ export const recibirMensaje = async (req: any, res: Response) => {
 
     res.status(201).json({
       respuesta,
-      mensaje_id: nuevoMensaje._id,
+      mensaje: nuevoMensaje,
     });
   } catch (error) {
     console.error("Error al procesar mensaje:", error);
