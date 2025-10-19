@@ -52,4 +52,18 @@ ClienteSchema.pre("save", function (next) {
   next();
 });
 
+ClienteSchema.pre('findOne', function (next) {
+  const filtro = this.getFilter(); // accede al objeto del filtro
+
+  if (filtro.telefono) {
+    let numero = filtro.telefono.replace(/\s+/g, '').replace(/[^\d+]/g, '');
+    const sinPrefijo = numero.replace(/^\+57/, '');
+    filtro.telefono = `+57${sinPrefijo}`;
+    this.setQuery(filtro); // reescribe el filtro
+  }
+
+  next();
+});
+
+
 export const ClienteModel = model<ICliente>("Cliente", ClienteSchema);
