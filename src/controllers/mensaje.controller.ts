@@ -15,6 +15,7 @@ export const recibirMensaje = async (req: any, res: Response) => {
       tenant_id: new Types.ObjectId(tenant_id),
       telefono,
     });
+    console.log("🚀 ~ recibirMensaje ~ cliente:", cliente)
 
     if (!cliente)
       cliente = await ClienteModel.create({
@@ -34,6 +35,8 @@ export const recibirMensaje = async (req: any, res: Response) => {
       contenido,
       respuesta: { texto: respuesta },
     });
+
+    nuevoMensaje.save();
 
     res.status(201).json({
       respuesta,
