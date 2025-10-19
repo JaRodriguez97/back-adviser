@@ -30,12 +30,11 @@ const MensajeSchema = new Schema(
         enum: ["agendar", "cambiar", "cancelar", "info", "otro"],
       },
       entidades: {
-        fecha: String,
-        hora: String,
+        fecha: { type: String },
+        hora: { type: String },
         servicio: {
           type: Schema.Types.ObjectId,
           ref: "Servicio",
-          required: true,
         },
         ambiguedad: { type: Boolean },
         solapamiento: { type: Boolean },

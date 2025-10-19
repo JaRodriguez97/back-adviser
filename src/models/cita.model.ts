@@ -69,7 +69,7 @@ const CitaSchema = new Schema(
   }
 );
 
-// Índices mencionados en el readme
+// Índices
 CitaSchema.index({ tenant_id: 1, hora_inicio: 1 });
 CitaSchema.index({ tenant_id: 1, recurso_id: 1, hora_inicio: 1 });
 
