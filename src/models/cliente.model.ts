@@ -12,6 +12,10 @@ const ClienteSchema = new Schema(
       type: String,
       required: true,
       trim: true,
+      validate: {
+        validator: (v) => /^\+57\d{10}$/.test(v),
+        message: "El número de teléfono debe tener formato +57XXXXXXXXXX",
+      },
     },
     email: {
       type: String,
@@ -36,14 +40,20 @@ ClienteSchema.index({ tenant_id: 1, telefono: 1 }, { unique: true });
 // Middleware para formatear el número de teléfono
 ClienteSchema.pre("save", function (next) {
   if (this.isModified("telefono")) {
-    // Eliminar caracteres no numéricos
-    const numero = this.telefono.replace(/\D/g, "");
-    if (numero.length !== 10) {
-      next(new Error("El número de teléfono debe tener 10 dígitos"));
-      return;
+    // limpiar espacios y caracteres no numéricos excepto +
+    let numero = this.telefono.replace(/\s+/g, "").replace(/[^\d+]/g, "");
+
+    // quitar el +57 si ya viene, para validar longitud
+    const sinPrefijo = numero.replace(/^\+57/, "");
+
+    if (sinPrefijo.length !== 10) {
+      return next(new Error("El número de teléfono debe tener 10 dígitos"));
     }
-    this.telefono = `+57${numero}`;
+
+    // volver a guardar con prefijo obligatorio
+    this.telefono = `+57${sinPrefijo}`;
   }
+
   next();
 });
 
