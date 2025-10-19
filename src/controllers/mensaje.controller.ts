@@ -9,6 +9,7 @@ export const recibirMensaje = async (req: any, res: Response) => {
     const { tenant_id, telefono, nombre, timestamp, contenido, key } =
         req.body as IMensaje,
       respuesta = "Mensaje recibido correctamente";
+      console.log("Mensaje llegado:", req.body);
     // Verificar si el cliente existe, si no, crearlo
     let cliente = await ClienteModel.findOne({
       tenant_id: new Types.ObjectId(tenant_id),
