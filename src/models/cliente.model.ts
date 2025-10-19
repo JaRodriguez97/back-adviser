@@ -5,17 +5,12 @@ const ClienteSchema = new Schema(
   {
     nombre: {
       type: String,
-      required: true,
       trim: true,
     },
     telefono: {
       type: String,
       required: true,
       trim: true,
-      validate: {
-        validator: (v) => /^\+57\d{10}$/.test(v),
-        message: "El número de teléfono debe tener formato +57XXXXXXXXXX",
-      },
     },
     email: {
       type: String,
