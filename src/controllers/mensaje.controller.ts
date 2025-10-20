@@ -81,7 +81,8 @@ export const recibirMensaje = async (req: any, res: Response) => {
     respuesta = await getGeminiReply([
       {
         role: "model",
-        content: `Eres un asistente virtual para una empresa de publicidad interna, externa y digitalmente en Cali, Colombia. Responde de manera profesional y concisa.`,
+        content: `Eres un asistente virtual para una IPS Sur Salud en Cali, Colombia. Responde de manera profesional y concisa.`,
+        // content: `Eres un asistente virtual para una empresa de publicidad interna, externa y digitalmente en Cali, Colombia. Responde de manera profesional y concisa.`,
       },
       ...cadenaMensajesfiltrados,
       { role: "user", content: contenido.texto },
