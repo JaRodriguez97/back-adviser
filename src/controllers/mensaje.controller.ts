@@ -1,9 +1,9 @@
-import type { Response } from "express";
-import { Types } from "mongoose";
-import { env } from "process";
+import type { Request, Response } from "express";
+import { MensajeModel } from "../models/mensaje.model.js";
 import type { IMensaje } from "../interfaces/mensaje.interface.js";
 import { ClienteModel } from "../models/cliente.model.js";
-import { MensajeModel } from "../models/mensaje.model.js";
+import { Types } from "mongoose";
+import { env } from "process";
 
 const API_KEY = env.API_KEY;
 const GEMINI_ENDPOINT = `${env.URI_BASE}=${API_KEY}`;
@@ -14,7 +14,6 @@ const getGeminiReply = async (history: any[] = []) => {
     parts: [{ text: msg.content }],
   }));
 
-  console.log("🚀 ~ getGeminiReply ~ GEMINI_ENDPOINT:", GEMINI_ENDPOINT)
   const response = await fetch(GEMINI_ENDPOINT, {
     method: "POST",
     headers: {
@@ -73,7 +72,7 @@ export const recibirMensaje = async (req: any, res: Response) => {
           content: contenido.texto,
         });
         cadenaMensajesfiltrados.push({
-          role: "system",
+          role: "model",
           content: respuesta.texto,
         });
       });
@@ -81,7 +80,7 @@ export const recibirMensaje = async (req: any, res: Response) => {
 
     respuesta = await getGeminiReply([
       {
-        role: "system",
+        role: "model",
         content: `Eres un asistente virtual para una empresa de publicidad interna, externa y digitalmente en Cali, Colombia. Responde de manera profesional y concisa.`,
       },
       ...cadenaMensajesfiltrados,
