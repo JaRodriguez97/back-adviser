@@ -13,7 +13,6 @@ const getGeminiReply = async (history: any[] = []) => {
     role: msg.role,
     parts: [{ text: msg.content }],
   }));
-  console.log("🚀 ~ getGeminiReply ~ formattedHistory:", formattedHistory)
 
   const response = await fetch(GEMINI_ENDPOINT, {
     method: "POST",
@@ -32,8 +31,10 @@ const getGeminiReply = async (history: any[] = []) => {
   });
 
   const data = await response.json();
+  console.log("🚀 ~ getGeminiReply ~ data:", JSON.stringify(data));
 
   const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  console.log("🚀 ~ getGeminiReply ~ reply:", reply)
   return reply;
 };
 
@@ -58,11 +59,11 @@ export const recibirMensaje = async (req: any, res: Response) => {
       });
 
     let cadenaMensajes = await MensajeModel.find({
-      tenant_id:  new Types.ObjectId(tenant_id),
+      tenant_id: new Types.ObjectId(tenant_id),
       telefono,
     });
 
-    let cadenaMensajesfiltrados: { role: string; content: string; }[] = [];
+    let cadenaMensajesfiltrados: { role: string; content: string }[] = [];
 
     if (cadenaMensajes.length) {
       cadenaMensajes.forEach(({ contenido, respuesta }) => {
