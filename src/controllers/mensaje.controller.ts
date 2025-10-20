@@ -13,6 +13,7 @@ const getGeminiReply = async (history: any[] = []) => {
     role: msg.role,
     parts: [{ text: msg.content }],
   }));
+  console.log("🚀 ~ getGeminiReply ~ formattedHistory:", formattedHistory)
 
   const response = await fetch(GEMINI_ENDPOINT, {
     method: "POST",
