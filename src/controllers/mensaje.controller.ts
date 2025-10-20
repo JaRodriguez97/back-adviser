@@ -31,7 +31,7 @@ const getGeminiReply = async (history: any[] = []) => {
   });
 
   const data = await response.json();
-  console.log("🚀 ~ getGeminiReply ~ data:", JSON.stringify(data));
+  // console.log("🚀 ~ getGeminiReply ~ data:", JSON.stringify(data));
 
   const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
   console.log("🚀 ~ getGeminiReply ~ reply:", reply)
@@ -44,7 +44,7 @@ export const recibirMensaje = async (req: any, res: Response) => {
       req.body as IMensaje;
     let respuesta;
 
-    console.log("Mensaje llegado:", req.body);
+    // console.log("Mensaje llegado:", req.body);
     // Verificar si el cliente existe, si no, crearlo
     let cliente = await ClienteModel.findOne({
       tenant_id: new Types.ObjectId(tenant_id),
@@ -81,7 +81,7 @@ export const recibirMensaje = async (req: any, res: Response) => {
     respuesta = await getGeminiReply([
       {
         role: "model",
-        content: `Eres un asistente virtual para una IPS Sur Salud en Cali, Colombia. Responde de manera profesional y concisa.`,
+        content: `Eres un asistente virtual para una IPS Sur Salud en Cali, Colombia. Responde de manera profesional y concisa. ignora los stickers, si te envia, ya sabes que es para alguna cosa graciosa pero amable, no le des importancia y concentra en el mensaje de texto.`,
         // content: `Eres un asistente virtual para una empresa de publicidad interna, externa y digitalmente en Cali, Colombia. Responde de manera profesional y concisa.`,
       },
       ...cadenaMensajesfiltrados,
