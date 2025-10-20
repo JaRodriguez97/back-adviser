@@ -1,9 +1,9 @@
-import type { Request, Response } from "express";
-import { MensajeModel } from "../models/mensaje.model.js";
-import type { IMensaje } from "../interfaces/mensaje.interface.js";
-import { ClienteModel } from "../models/cliente.model.js";
+import type { Response } from "express";
 import { Types } from "mongoose";
 import { env } from "process";
+import type { IMensaje } from "../interfaces/mensaje.interface.js";
+import { ClienteModel } from "../models/cliente.model.js";
+import { MensajeModel } from "../models/mensaje.model.js";
 
 const API_KEY = env.API_KEY;
 const GEMINI_ENDPOINT = `${env.URI_BASE}=${API_KEY}`;
@@ -14,6 +14,7 @@ const getGeminiReply = async (history: any[] = []) => {
     parts: [{ text: msg.content }],
   }));
 
+  console.log("🚀 ~ getGeminiReply ~ GEMINI_ENDPOINT:", GEMINI_ENDPOINT)
   const response = await fetch(GEMINI_ENDPOINT, {
     method: "POST",
     headers: {
