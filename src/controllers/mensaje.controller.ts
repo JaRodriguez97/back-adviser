@@ -4,6 +4,11 @@ import type { IMensaje } from "../interfaces/mensaje.interface.js";
 import { ClienteModel } from "../models/cliente.model.js";
 import { Types } from "mongoose";
 import { env } from "process";
+import { generateMessageId } from "../utils/hash.utils.js";
+import {
+  clasificarIntencion,
+  extraerEntidades,
+} from "../services/ia.service.js";
 
 const API_KEY = env.API_KEY;
 const GEMINI_ENDPOINT = `${env.URI_BASE}=${API_KEY}`;
@@ -34,17 +39,31 @@ const getGeminiReply = async (history: any[] = []) => {
   // console.log("🚀 ~ getGeminiReply ~ data:", JSON.stringify(data));
 
   const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  console.log("🚀 ~ getGeminiReply ~ reply:", reply)
+  console.log("🚀 ~ getGeminiReply ~ reply:", reply);
   return reply;
 };
 
 export const recibirMensaje = async (req: any, res: Response) => {
   try {
-    const { tenant_id, telefono, nombre, timestamp, contenido, key } =
-      req.body as IMensaje;
-    let respuesta;
+    let { tenant_id, telefono, nombre, timestamp, contenido, key } =
+        req.body as IMensaje,
+      respuesta;
 
-    // console.log("Mensaje llegado:", req.body);
+    // Verificar duplicados
+    const message_id = generateMessageId(telefono, timestamp, contenido.texto);
+    const mensajeExistente = await MensajeModel.findOne({
+      message_id,
+      tenant_id: new Types.ObjectId(tenant_id),
+    });
+
+    if (mensajeExistente) {
+      return res.status(204).send();
+    }
+
+    // Clasificar la intención del mensaje y extraer entidades
+    let clasificacion;
+    let entidades;
+
     // Verificar si el cliente existe, si no, crearlo
     let cliente = await ClienteModel.findOne({
       tenant_id: new Types.ObjectId(tenant_id),
@@ -58,10 +77,11 @@ export const recibirMensaje = async (req: any, res: Response) => {
         nombre,
       });
 
+    // Obtener mensajes anteriores para contexto
     let cadenaMensajes = await MensajeModel.find({
       tenant_id: new Types.ObjectId(tenant_id),
       telefono,
-    });
+    }).limit(10);
 
     let cadenaMensajesfiltrados: { role: string; content: string }[] = [];
 
@@ -76,17 +96,30 @@ export const recibirMensaje = async (req: any, res: Response) => {
           content: respuesta.texto,
         });
       });
+      // si no existe cedna de mensajes, significa que es cliente nuevoMensaje, por endOfDecade, es posible que solo esté saludando, asi que el primero no sería reelevante analizarlo para clasificar ni tampoco la intensión
+      clasificacion = await clasificarIntencion(contenido.texto);
+      entidades = await extraerEntidades(
+        contenido.texto,
+        clasificacion.intencion
+      );
     }
 
     respuesta = await getGeminiReply([
       {
-        role: "model",
+        role: "user",
         content: `Eres un asistente virtual para una IPS Sur Salud en Cali, Colombia. Responde de manera profesional y concisa. ignora los stickers, si te envia, ya sabes que es para alguna cosa graciosa pero amable, no le des importancia y concentra en el mensaje de texto.`,
         // content: `Eres un asistente virtual para una empresa de publicidad interna, externa y digitalmente en Cali, Colombia. Responde de manera profesional y concisa.`,
       },
       ...cadenaMensajesfiltrados,
       { role: "user", content: contenido.texto },
     ]);
+
+    if (clasificacion && clasificacion.intencion) {
+      contenido = {
+        texto: contenido.texto,
+        intencion: clasificacion.intencion,
+      };
+    }
 
     // Crear el registro del mensaje
     const nuevoMensaje = await MensajeModel.create({
@@ -95,9 +128,9 @@ export const recibirMensaje = async (req: any, res: Response) => {
       nombre,
       telefono,
       timestamp,
-      tipo: "entrante",
       contenido,
       respuesta: { texto: respuesta },
+      message_id,
     });
 
     nuevoMensaje.save();

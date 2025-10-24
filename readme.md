@@ -1,20 +1,26 @@
-1) Alcance del MVP (no negociable) 🔄
+1) Alcance del MVP (no negociable) ❌
 
     Único objetivo: agendar/cambiar/cancelar citas por WhatsApp. Nada de dashboards, ni reportes.
+    Estado: Solo estructura base de mensajes implementada.
 
     Llamadas a IA por mensaje: máx. 3 (intención, extracción, redacción).
+    Estado: Sin implementar integración con IA.
 
-    Idioma: español neutral, sin “creatividad” del modelo. Temperatura baja.
+    Idioma: español neutral, sin "creatividad" del modelo. Temperatura baja.
+    Estado: Pendiente configuración de IA.
 
-2) Legal, privacidad y consentimiento 🔄
+2) Legal, privacidad y consentimiento ❌
 
     Política de privacidad simple: qué capturas (teléfono, mensaje, fecha, key de notificación), para qué, y dónde lo envías.
+    Estado: Sin implementar.
 
-    Opt-in explícito del negocio para “Acceso a notificaciones”.
+    Opt-in explícito del negocio para "Acceso a notificaciones".
+    Estado: Sin implementar.
 
-    Nada de “prometer ser WhatsApp oficial”; di “gestión de notificaciones para agenda”.
+    Nada de "prometer ser WhatsApp oficial"; di "gestión de notificaciones para agenda".
+    Estado: Sin implementar.
 
-3) Multi-tenant desde el día 0 ✅
+3) Multi-tenant desde el día 0 🟡
     Implementado en modelos de base de datos con tenant_id y sus índices correspondientes.
 
     Todo documento en BD lleva tenant_id.
@@ -23,24 +29,32 @@
 
     No expongas ObjectId como “token”; usa API Key por tenant.
 
-4) Modelo de tiempo y anti-solapamiento (el corazón) ✅
+4) Modelo de tiempo y anti-solapamiento (el corazón) 🟡
     Implementado modelo de citas con validaciones de fecha/hora usando date-fns.
+    Estado: Modelo base creado, sin integración date-fns.
 
     Cada servicio tiene duración en minutos.
+    Estado: Implementado en modelo.
 
     Cita = { tenant_id, cliente_id, servicio_id, start, end, estado }.
+    Estado: Estructura implementada, sin validaciones.
 
     formato fecha yyyy/mm/dd y formato de hora hh:mm se da manejo en el código con Date o preguntando directamente a la IA
+    Estado: Pendiente implementación de formatos.
 
     Estrategia anti-choques:
+    Estado: Sin implementar.
 
         Opción A (simple y robusta): discretiza en slots de 5–15 min y crea un doc por slot reservado. Índice único en { tenant_id, recurso_id, fecha, slot }.
+        Estado: Pendiente decisión e implementación.
 
         Opción B (sin slots): transacción con consulta de overlap y escritura atómica. Si encuentra overlap, rechaza.
+        Estado: Pendiente decisión e implementación.
 
     Buffers opcionales: tiempo mínimo entre citas; regla por tenant.
+    Estado: Sin implementar.
 
-5) Recursos y disponibilidad ✅
+5) Recursos y disponibilidad ❌
     Implementado modelo de recursos con horarios flexibles.
 
     Si el negocio tiene varias personas/cabinas, define recurso_id por agenda.
@@ -49,39 +63,52 @@
 
     Validación de rango máximo de reserva (p. ej. 30 días).
 
-6) Flujo IA en 4 pasos (máx. 5) 🔄
+6) Flujo IA en 4 pasos (máx. 5) 🟡
 
-    Clasificación de intención: agendar | cambiar | cancelar | otro.
+    Clasificación de intención: agendar | cambiar | cancelar | info | otro.
+    Estado: ✅ Implementado con Gemini AI, temperatura baja y formato JSON estricto.
 
     Extracción: { fecha, hora, servicio }, ambigüedad y/o solapamientos.
+    Estado: ❌ Siguiente paso a implementar.
 
     Validación backend: horarios, duración, políticas. Sin IA.
+    Estado: ❌ Pendiente.
 
     Redacción: confirmación o alternativas cercanas; si ambiguo, pedir precisión.
+    Estado: ❌ Pendiente.
 
     Opcional: resumen estructurado para log/analytics (sin PII sensible).
+    Estado: ❌ Pendiente.
 
 Usa un solo LLM para pasos 1, 2 y 4 con prompts distintos. Temperatura baja, salida JSON estricta.
+Estado: Pendiente integración con LLM.
 
-7) Idempotencia, de duplicación y concurrencia 🔄
+7) Idempotencia, de duplicación y concurrencia 🟡
 
     Genera message_id estable por notificación: hash de {from, timestamp, text}.
+    Estado: ✅ Implementado con respuesta 204 para duplicados.
 
     Endpoints POST con Idempotency-Key para evitar doble inserción.
+    Estado: ❌ Pendiente.
 
     En cambios/cancelaciones, verifica estado actual antes de mutar (optimistic lock con updated_at o versión).
+    Estado: ❌ Pendiente.
 
-8) Seguridad mínima que no te estorbe 🔄
+8) Seguridad mínima que no te estorbe �
 
     API Key por tenant obligatoria en header. Rotable, pero no caduca si no quieres complicarte aún.
+    Estado: Implementado modelo y autenticación básica, falta rotación.
 
     API Key por dispositivo opcional si instalas en varios celulares.
+    Estado: Modelo preparado, falta implementación.
 
     CORS cerrado a tu app.
+    Estado: Configuración básica implementada.
 
     No loguees contenido completo del mensaje en texto plano; usa redacción parcial o hash si hace falta.
+    Estado: Sin implementar.
 
-9) Datos y MongoDB (colecciones e índices) ✅
+9) Datos y MongoDB (colecciones e índices) 🟡
     Implementados modelos: tenant, cliente, cita, servicio y recursos con sus índices correspondientes.
 ejemplos de resultados que se quieren implementar
     tenant:
@@ -154,14 +181,13 @@ ejemplos de resultados que se quieren implementar
         "tenant_id": objectid,
         "cliente_id": objectid,
         "timestamp": Date,
-        "tipo": "entrante" | "saliente",
         "contenido": {
             "texto": string,
-            "intencion": string,      // agendar|cambiar|cancelar|otro
+            "intencion": string,      // agendar|cambiar|cancelar|info|otro
             "entidades": object,       // fecha, hora, servicio extraídos
             "contexto_previo": string  // hash o referencia al mensaje anterior relacionado
         },
-        // "TTL": 30 // días de retención
+        // "TTL": 30 // días de retención (aun por debatir)
     }
     Índices: 
         { tenant_id, cliente_id, timestamp }
