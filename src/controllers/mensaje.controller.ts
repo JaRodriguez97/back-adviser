@@ -98,10 +98,12 @@ export const recibirMensaje = async (req: any, res: Response) => {
       });
       // si no existe cedna de mensajes, significa que es cliente nuevoMensaje, por endOfDecade, es posible que solo esté saludando, asi que el primero no sería reelevante analizarlo para clasificar ni tampoco la intensión
       clasificacion = await clasificarIntencion(contenido.texto);
-      entidades = await extraerEntidades(
-        contenido.texto,
-        clasificacion.intencion
-      );
+
+      if (["agendar", "cambiar", "cancelar"].includes(clasificacion.intencion))
+        entidades = await extraerEntidades(
+          contenido.texto,
+          clasificacion.intencion
+        );
     }
 
     respuesta = await getGeminiReply([
@@ -118,6 +120,13 @@ export const recibirMensaje = async (req: any, res: Response) => {
       contenido = {
         texto: contenido.texto,
         intencion: clasificacion.intencion,
+      };
+    }
+
+    if (entidades && Object.keys(entidades).length) {
+      contenido = {
+        ...contenido,
+        entidades,
       };
     }
 

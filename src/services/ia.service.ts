@@ -26,11 +26,14 @@ Responde SOLO en formato JSON con:
   "confianza": número entre 0 y 1
 }`;
 
+const API_KEY = env.API_KEY;
+const GEMINI_ENDPOINT = `${env.URI_BASE}=${API_KEY}`;
+
 export const clasificarIntencion = async (
   mensaje: string
 ): Promise<ClasificacionResponse> => {
   try {
-    const response = await fetch(env.GEMINI_ENDPOINT as string, {
+    const response = await fetch(GEMINI_ENDPOINT as string, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -79,8 +82,8 @@ export const clasificarIntencion = async (
 interface EntidadesExtraccion {
   fecha?: string; // formato yyyy/mm/dd
   hora?: string; // formato hh:mm
-  servicio?: string; // nombre del servicio
   ambiguedad: boolean;
+  solapamiento: boolean;
 }
 
 const PROMPT_EXTRACCION = `Extrae las entidades del siguiente mensaje para una cita.
@@ -97,11 +100,11 @@ export const extraerEntidades = async (
 ): Promise<EntidadesExtraccion> => {
   // Solo procesar intenciones relevantes
   if (!["agendar", "cambiar", "cancelar"].includes(intencion)) {
-    return { ambiguedad: true };
+    return { ambiguedad: true, solapamiento: false };
   }
 
   try {
-    const response = await fetch(env.GEMINI_ENDPOINT as string, {
+    const response = await fetch(GEMINI_ENDPOINT as string, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -127,12 +130,15 @@ export const extraerEntidades = async (
 
     try {
       console.log("🚀 ~ extraerEntidades ~ respuestaIA:", respuestaIA);
-      return JSON.parse(respuestaIA) as EntidadesExtraccion;
+      const r = JSON.parse(respuestaIA) as EntidadesExtraccion;
+
+      r.solapamiento = false;
+      return r;
     } catch {
-      return { ambiguedad: true };
+      return { ambiguedad: true, solapamiento: false };
     }
   } catch (error) {
     console.error("Error al extraer entidades:", error);
-    return { ambiguedad: true };
+    return { ambiguedad: true, solapamiento: false };
   }
 };
