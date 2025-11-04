@@ -108,12 +108,12 @@ interface EntidadesExtraccion {
   confirmacion?: boolean;
 }
 
-let PROMPT_EXTRACCION = `Las entidades a extraer son:
+let PROMPT_EXTRACCION = `Las entidades a completar en base al mensaje son:
 
 {
   "fecha"?: "yyyy/mm/dd", // ${
   new Date().toISOString().split("T")[0]
-}. Úsala solo como referencia para determinar la fecha exacta de la cita solicitada (por ejemplo, ‘el próximo miércoles’), pero no como la fecha de la cita.
+}= es la fecha de hoy Úsala solo como referencia para determinar la fecha exacta de la cita solicitada (por ejemplo, ‘el próximo miércoles’), pero no como la fecha de la cita.
   "hora"?: "hh:mm",
   "servicio"?: "ObjectId", // en base al listado de servicios que se ofrecen
   "ambiguedad": true si no es claro en la fecha, hora o servicio que desea en este mensaje y segun el contexto (no siempre deben venir los 3 datos en el mismo mensaje), false si todo es claro
@@ -137,7 +137,7 @@ export const extraerEntidades = async (
       PROMPT_EXTRACCION = `${PROMPT_EXTRACCION}
       Teniendo en cuenta que los datos previos extraídos son:
       ${JSON.stringify(entidad)}
-      realiza los ajustes o cambios necesarios al analizar el mensaje final manteniendo los datos del json que sean adecuados.`;
+      conserva o realiza los ajustes y/o cambios necesarios al analizar el mensaje final manteniendo los datos del json que sean adecuados.`;
     }
 
     const response = await fetch(GEMINI_ENDPOINT as string, {

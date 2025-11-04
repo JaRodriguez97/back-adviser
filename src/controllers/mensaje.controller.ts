@@ -79,16 +79,18 @@ export const recibirMensaje = async (req: any, res: Response) => {
 
       cadenaMensajes.forEach(({ contenido, respuesta }) => {
         contenido.texto = `{
-          texto: ${
-            contenido.texto
-          }, // la respuesta que se le dio al cliente"
-          intencion: ${JSON.stringify(
-            contenido.intencion
-          )}, // la intencion detectada en el mensaje del cliente
-          entidades: ${JSON.stringify(
-            contenido.entidades
-          )} // las entidades o datos extraidas del mensaje (actual o anteriores) del cliente
-        }`;
+          texto: ${contenido.texto}, // la respuesta que se le dio al cliente"
+          intencion: ${
+            contenido.intencion && Object.keys(contenido.intencion).length
+              ? JSON.stringify(contenido.intencion)
+              : "ninguno"
+          }, // la intencion detectada en el mensaje del cliente
+          entidades: ${
+            contenido.entidades && Object.keys(contenido.entidades).length
+              ? JSON.stringify(contenido.entidades)
+              : "ninguno"
+          } // las entidades o datos extraidas del mensaje (this.texto o anteriores) del cliente
+        } // esta estructura es solo de contexto para que el modelo entienda mejor la conversación completa hasta el momento, no lo uses para responder con esta estructura`;
 
         cadenaMensajesfiltrados.push({
           role: "user",
@@ -117,17 +119,17 @@ export const recibirMensaje = async (req: any, res: Response) => {
     respuesta = await getGeminiReply([
       {
         role: "user",
-        content: `Eres un asistente virtual para la siguiente empresa o negocio: ${JSON.stringify(
+        content: `Eres una asistente virtual llamada Emily para la siguiente empresa o negocio: ${JSON.stringify(
           tenant
         )}.
         
         
-        Trabaja con esos datos para ofrecer la mejor experiencia posible al cliente. si envian stickers o archivos multimedia, responde que no estas habilitado para procesarlos pero que estas atento a su mensaje de texto. si es un saludo, responde muy educadamente ofreciendo tu asistencia. la idea es mitigar a que el cliente exprese inicialmente sus necesidades. si quieres implementa emojis de forma muy profesional y adecuada al contexto. nunca dejes un mensaje sin respuesta. incluso, los archivos multimedia debes responder que no estas habilitado para procesarlos pero que estas atento a su mensaje de texto. pero siempre di algo, aunque sea corto.
+        Trabaja con esos datos para ofrecer la mejor experiencia posible al cliente. si envian stickers o archivos multimedia, responde que no estas habilitado para procesarlos pero que estas atento a su mensaje de texto. si es un saludo, responde muy educadamente ofreciendo tu asistencia. la idea es mitigar a que el cliente exprese inicialmente sus necesidades. si quieres implementa emojis de forma muy profesional y adecuada al contexto sin miedo. nunca dejes un mensaje sin respuesta. incluso, los archivos multimedia debes responder que no estas habilitado para procesarlos pero que estas atento a su mensaje de texto. pero siempre di algo, aunque sea corto.
         la iea central es que puedas agendar citas, maneja en lo posible este flujo de conversción:
         1. saludo inicial
         2. averiguar necesidad del cliente (si es info solo responde sus preguntas en base al contexto del negocio, no inventes datos y se totalmente profesional y educado)
         3. si es agendar, cambiar o cancelar cita, extrae los datos necesarios (fecha, hora, servicio) y confirma con el cliente
-        4. una vez confirmado, informa que la solicitud está en proceso y que se comunicaran pronto para confirmar la cita
+        4. una vez confirmados todos los datos (fecha, hora, servicio), informa que la solicitud está en proceso y que se comunicaran pronto para confirmar la cita
         5. despedida cordial`,
       },
       ...cadenaMensajesfiltrados,
@@ -147,7 +149,7 @@ export const recibirMensaje = async (req: any, res: Response) => {
 
               - fecha: "yyyy/mm/dd",  // ${
                 new Date().toISOString().split("T")[0]
-              }. Úsala solo como referencia para determinar la fecha exacta de la cita solicitada (por ejemplo, ‘el próximo miércoles’), pero no como la fecha de la cita.
+              } = es la fecha de hoy Úsala solo como referencia para determinar la fecha exacta de la cita solicitada (por ejemplo, ‘el próximo miércoles’), pero no como la fecha de la cita.
               - hora": "hh:mm",
               - servicio: relacionar con los servicios actuales segun soliciten`
             : ""),
