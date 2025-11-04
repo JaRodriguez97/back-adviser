@@ -4,7 +4,7 @@ import { authenticateApiKey } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
-// Aplicar middleware de autenticación a todas las rutas
+// Aplicar middlewares en orden
 router.use(authenticateApiKey);
 
 /**

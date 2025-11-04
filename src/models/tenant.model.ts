@@ -42,7 +42,6 @@ const TenantSchema = new Schema(
           trim: true,
         },
       ],
-      required: true,
     },
     horarios: {
       type: Map,
@@ -93,8 +92,8 @@ TenantSchema.index({ "contacto.telefono": 1 }, { unique: true });
 TenantSchema.pre("save", function (next) {
   if (this.isModified("contacto.telefono")) {
     // Crear el enlace de WhatsApp usando el número de teléfono
-    const numero = this.contacto.telefono.replace(/\D/g, "");
-    this.contacto.whatsapp = `htps://wa.me/${numero}`;
+    const numero = this.contacto!.telefono.replace(/\D/g, "");
+    this.contacto!.whatsapp = `htps://wa.me/${numero}`;
   }
   next();
 });

@@ -38,6 +38,7 @@ const MensajeSchema = new Schema(
         },
         ambiguedad: { type: Boolean },
         solapamiento: { type: Boolean },
+        confirmacion: { type: Boolean },
       },
     },
     respuesta: {

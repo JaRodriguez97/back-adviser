@@ -26,15 +26,16 @@ const ServicioSchema = new Schema(
       },
     },
     precio: {
-      type: String,
-      trim: true,
-      validate: {
-        validator: function (v: string) {
-          return /^\d{1,3}(,\d{3})*(\.\d{3})*$/.test(v);
-        },
-        message:
-          "El formato del precio debe ser numérico con separadores de miles (ejemplo: 20.000)",
-      },
+      type: Number,
+      required: true,
+      // trim: true,
+      // validate: {
+      //   validator: function (v: number) {
+      //     return /^\d{1,3}(,\d{3})*(\.\d{3})*$/.test(v);
+      //   },
+      //   message:
+      //     "El formato del precio debe ser numérico con separadores de miles (ejemplo: 20.000)",
+      // },
     },
   },
   {

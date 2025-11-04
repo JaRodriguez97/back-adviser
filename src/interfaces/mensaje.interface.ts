@@ -1,20 +1,29 @@
 import { Document, Types } from "mongoose";
 
+export type IntencionMensaje =
+  | "agendar"
+  | "cambiar"
+  | "cancelar"
+  | "info"
+  | "otro";
+
 export interface IMensaje extends Document {
   tenant_id: Types.ObjectId;
   key: String;
   nombre: string;
   telefono: string;
   timestamp: Date;
+  message_id: string;
   contenido: {
     texto: string;
-    intencion?: string; // agendar|cambiar|cancelar|info|otro
+    intencion?: IntencionMensaje;
     entidades?: {
       fecha?: string;
       hora?: string;
       servicio?: Types.ObjectId;
-      ambiguedad: boolean;
-      solapamiento: boolean;
+      ambiguedad?: boolean;
+      solapamiento?: boolean;
+      confirmacion?: boolean;
     };
   };
   respuesta: {

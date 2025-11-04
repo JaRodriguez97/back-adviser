@@ -1,3 +1,5 @@
+### proximo paso, testeo para confirmar continuidad de la conversación, evitar saludos repetitivos, además de ofreecer información en base al tenant de bd, para diferenciar entre alguna acción de citas o info para poder proceder a crear las citas interfaces y de ahí en adelante
+
 1) Alcance del MVP (no negociable) ❌
 
     Único objetivo: agendar/cambiar/cancelar citas por WhatsApp. Nada de dashboards, ni reportes.
@@ -66,10 +68,13 @@
 6) Flujo IA en 4 pasos (máx. 5) 🟡
 
     Clasificación de intención: agendar | cambiar | cancelar | info | otro.
-    Estado: ✅ Implementado con Gemini AI, temperatura baja y formato JSON estricto.
+    Estado: ✅ Implementado con Gemini AI, temperatura 0.1 y formato JSON estricto.
+    Estado: ✅ Integrado en el flujo de mensajes con manejo de errores.
 
     Extracción: { fecha, hora, servicio }, ambigüedad y/o solapamientos.
-    Estado: ❌ Siguiente paso a implementar.
+    Estado: ✅ Estructura implementada con schema JSON estricto.
+    Estado: ✅ Implementada extracción de fecha, hora, servicio y confirmación.
+    Estado: ✅ Manejo de ambigüedad y solapamientos integrado.
 
     Validación backend: horarios, duración, políticas. Sin IA.
     Estado: ❌ Pendiente.
@@ -80,19 +85,18 @@
     Opcional: resumen estructurado para log/analytics (sin PII sensible).
     Estado: ❌ Pendiente.
 
-Usa un solo LLM para pasos 1, 2 y 4 con prompts distintos. Temperatura baja, salida JSON estricta.
+Usa un solo LLM (Gemini) para pasos 1, 2 y 4 con prompts distintos. Temperatura baja (0.1), salida JSON estricta.
 Estado: Pendiente integración con LLM.
 
-7) Idempotencia, de duplicación y concurrencia 🟡
+7) Idempotencia y concurrencia 🟡
 
     Genera message_id estable por notificación: hash de {from, timestamp, text}.
-    Estado: ✅ Implementado con respuesta 204 para duplicados.
-
-    Endpoints POST con Idempotency-Key para evitar doble inserción.
-    Estado: ❌ Pendiente.
+    Estado: ✅ Implementado con respuesta 204 para duplicados. Solución simple y efectiva.
 
     En cambios/cancelaciones, verifica estado actual antes de mutar (optimistic lock con updated_at o versión).
     Estado: ❌ Pendiente.
+
+    Nota: Se decidió usar solo message_id para idempotencia, simplificando la implementación y manteniendo la funcionalidad requerida.
 
 8) Seguridad mínima que no te estorbe �
 
@@ -109,7 +113,10 @@ Estado: Pendiente integración con LLM.
     Estado: Sin implementar.
 
 9) Datos y MongoDB (colecciones e índices) 🟡
-    Implementados modelos: tenant, cliente, cita, servicio y recursos con sus índices correspondientes.
+    Implementados modelos base: tenant, cliente, cita, servicio.
+    Estado: ✅ Modelos base con índices principales
+    Estado: ❌ Pendiente modelo de recursos
+    Estado: 🟡 TTL index en mensajes por implementar
 ejemplos de resultados que se quieren implementar
     tenant:
     {
@@ -196,12 +203,19 @@ ejemplos de resultados que se quieren implementar
 
     api_keys: { tenant_id, key } con índice único en key.
 
-10) Arquitectura mínima ⚡
-    Parcialmente implementado: configuración básica de Express y conexión a MongoDB.
+10) Arquitectura mínima 🟡
+    Express y MongoDB:
+    Estado: ✅ Configuración básica implementada
+    Estado: ✅ Conexión a MongoDB con manejo de errores
 
-    API Express: /v1/messages, /v1/availability, /v1/appointments.
+    API Express endpoints:
+    Estado: 🟡 /v1/messages implementado parcialmente
+    Estado: ❌ /v1/availability pendiente
+    Estado: ❌ /v1/appointments pendiente
 
-    Servicio IA (módulo interno): funciones puras con entrada/salida JSON.
+    Servicio IA:
+    Estado: ✅ Implementación base con Gemini AI
+    Estado: ✅ Funciones puras con entrada/salida JSON estricta
 
     Cola ligera (Redis opcional) para picos; si no, directo en request con timeout.
 
