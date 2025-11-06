@@ -96,13 +96,32 @@ export const recibirMensaje = async (req: any, res: Response) => {
 
         let cadenaMensajesfiltrados: { role: string; content: string }[] = [];
 
+        let tenant = await TenantModel.aggregate([
+          { $match: { _id: tenant_id } },
+          {
+            $lookup: {
+              from: "servicios", // Nombre exacto de la colección de servicios
+              localField: "_id", // Campo del Tenant que relaciona
+              foreignField: "tenant_id", // Campo en servicios que apunta al Tenant
+              as: "servicios", // Nombre del array resultante
+            },
+          },
+        ]);
+
+        if (!tenant.length) throw new Error("Tenant no encontrado");
+
         if (cadenaMensajes.length) {
           //* si no existe cadena de mensajes, significa que es cliente nuevoMensaje, por ende, es posible que solo esté saludando, asi que el primero no sería reelevante analizarlo para clasificar ni tampoco la intensión
+          let cadenaContenidoIntension = cadenaMensajes.map(
+            ({ contenido, respuesta }) => ({
+              texto: contenido.texto,
+              intencion: contenido.intencion,
+              respuesta: respuesta.texto,
+            })
+          );
           clasificacion = await clasificarIntencion(
             contenido.texto,
-            cadenaMensajes[cadenaMensajes.length - 1]?.contenido.intencion,
-            cadenaMensajes[cadenaMensajes.length - 1]?.contenido.texto,
-            cadenaMensajes[cadenaMensajes.length - 1]?.respuesta.texto
+            cadenaContenidoIntension
           );
 
           if (
@@ -113,21 +132,17 @@ export const recibirMensaje = async (req: any, res: Response) => {
               e = contenidoAnterior?.entidades;
 
             if (!e || (!e.fecha && !e.hora && !e.servicio)) {
-              e = [...cadenaMensajes].reverse().find(({ contenido }) => {
-                const en = contenido?.entidades;
-                return en && (en.fecha || en.hora || en.servicio);
-              })?.contenido.entidades || {};
+              e =
+                [...cadenaMensajes].reverse().find(({ contenido }) => {
+                  const en = contenido?.entidades;
+                  return en && (en.fecha || en.hora || en.servicio);
+                })?.contenido.entidades || {};
             }
 
             entidades =
               e && !e?.confirmacion
-                ? await extraerEntidades(contenido.texto, e)
+                ? await extraerEntidades(contenido.texto, e, tenant[0].horarios)
                 : e;
-
-            console.log(
-              "🚀 ~ recibirMensaje ~ entidades despues de 'fusion':",
-              entidades
-            );
           }
 
           cadenaMensajes.forEach(({ contenido, respuesta }) => {
@@ -162,25 +177,19 @@ export const recibirMensaje = async (req: any, res: Response) => {
           });
         }
 
-        let tenant = await TenantModel.aggregate([
-          { $match: { _id: tenant_id } },
-          {
-            $lookup: {
-              from: "servicios", // Nombre exacto de la colección de servicios
-              localField: "_id", // Campo del Tenant que relaciona
-              foreignField: "tenant_id", // Campo en servicios que apunta al Tenant
-              as: "servicios", // Nombre del array resultante
-            },
-          },
-        ]);
+        const hoy = new Date();
+        const fechaISO = hoy.toISOString().split("T")[0];
+        const diaSemana = hoy.toLocaleDateString("es-ES", { weekday: "long" });
 
-        if (!tenant.length) throw new Error("Tenant no encontrado");
+        const textoReferencia = `Hoy es ${diaSemana} ${fechaISO}`;
+
+        console.log("Tenant: ", JSON.stringify(tenant));
 
         respuesta = await getGeminiReply([
           {
             role: "user",
             content: `
-            Eres EMILY, asistente virtual del negocio: ${JSON.stringify(
+            Eres Emily, asistente virtual del negocio: ${JSON.stringify(
               tenant
             )}.  
             Tu función: atender a las personas, ofrecer información, además de agendar o modificar citas.  
@@ -188,8 +197,8 @@ export const recibirMensaje = async (req: any, res: Response) => {
             Si el mensaje es saludo → responde cordialmente e invita a contar su necesidad.  
             Si es multimedia o sticker → di que no puedes procesarlo, pero esperas su texto.  
             Flujo ideal:  
-            1) Saludo → 2) Detectar necesidad → 3) Si cita: obtener fecha, hora y servicio → 4) Confirmar → 5) Decir que se contactarán pronto.  
-            Usa tono profesional, amable y natural. Puedes usar emojis con criterio.`,
+            1) Saludo → 2) Detectar necesidad → 3) Si cita obtener los siguientes datos 1 a la vez: → 3.1) fecha (para poder validar disponibilidad de ese día) Hoy es ${textoReferencia} [solo referencia para interpretar expresiones como "el próximo miércoles" o similares]. → 3.2) servicio (para poder validar disponibilidad de ese servicio ese día)  → 3.3) Mostrar disponibilidades segun bbdd (no se captura ningun dato) → 3.4) hora (confirmar segun la disponibilidad) → 4) Confirmar → 5) solicitar tipo y número de documento de quien será atendido  → 6) solicitar nombres y apellidos de quien será atendido → 5) Decir que se contactarán pronto.  
+            Usa tono profesional, amable y natural. Puedes usar emojis con criterio y de sobra, imagina que regalan emojis.`,
           },
           ...cadenaMensajesfiltrados,
           {
@@ -200,10 +209,7 @@ export const recibirMensaje = async (req: any, res: Response) => {
               Mensaje del cliente: "${contenido.texto}".` +
               (entidades && Object.keys(entidades).length
                 ? ` Entidades a completar: ${JSON.stringify(entidades)}.  
-                    Datos esperados: fecha ("yyyy-mm-dd"), hora ("hh:mm"), servicio (nombre exacto).  
-                    Hoy es ${
-                      new Date().toISOString().split("T")[0]
-                    } (solo referencia para interpretar expresiones como "el próximo miércoles").`
+                    Datos esperados: fecha ("yyyy-mm-dd"), hora ("hh:mm"), servicio (nombre exacto), tipoDocumento, numeroDocumento, nombresCompletos,`
                 : ""),
           },
         ]);

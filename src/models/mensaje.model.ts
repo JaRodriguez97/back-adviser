@@ -36,6 +36,9 @@ const MensajeSchema = new Schema(
           type: Schema.Types.ObjectId,
           ref: "Servicio",
         },
+        tipoDocumento: { type: String },
+        numeroDocumento: { type: String },
+        nombresCompletos: { type: String },
         ambiguedad: { type: Boolean },
         solapamiento: { type: Boolean },
         confirmacion: { type: Boolean },
@@ -53,7 +56,6 @@ const MensajeSchema = new Schema(
 );
 
 // Índices
-MensajeSchema.index({ tenant_id: 1, cliente_id: 1, timestamp: -1 });
 MensajeSchema.index({ tenant_id: 1, timestamp: -1 });
 
 // Índice compuesto para verificación rápida de duplicados

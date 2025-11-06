@@ -8,8 +8,19 @@ interface ClasificacionResponse {
   confianza: number;
 }
 
-const PROMPT_CLASIFICACION = `
-Clasifica este mensaje de WhatsApp según su intención.  
+const API_KEY = env.API_KEY;
+const GEMINI_ENDPOINT = `${env.URI_BASE}=${API_KEY}`;
+
+export const clasificarIntencion = async (
+  mensaje: string,
+  cadenaContenidoIntension?: {
+    texto: string;
+    intencion: IntencionMensaje | undefined;
+    respuesta: string;
+  }[]
+): Promise<ClasificacionResponse> => {
+  const PROMPT_CLASIFICACION = `
+Tu trabajo es Clasificar mensajes de WhatsApp según su intención.  
 Opciones:
 - agendar → programar una nueva cita  
 - cambiar → modificar una cita existente  
@@ -21,23 +32,24 @@ Devuelve SOLO un JSON con:
 { "intencion": "<una de las cinco opciones>", "confianza": <número entre 0 y 1> }
 `;
 
-const API_KEY = env.API_KEY;
-const GEMINI_ENDPOINT = `${env.URI_BASE}=${API_KEY}`;
-
-export const clasificarIntencion = async (
-  mensaje: string,
-  intencionPrevia?: IntencionMensaje,
-  textoPrevia?: string,
-  respuestaPrevia?: string
-): Promise<ClasificacionResponse> => {
   try {
     const contexto: string[] = [PROMPT_CLASIFICACION];
 
-    if (textoPrevia) contexto.push(`Mensaje previo: ${textoPrevia}`);
-    if (intencionPrevia) contexto.push(`Intención previa: ${intencionPrevia}`);
-    if (respuestaPrevia) contexto.push(`Respuesta previa: ${respuestaPrevia}`);
+    if (cadenaContenidoIntension && cadenaContenidoIntension.length)
+      cadenaContenidoIntension.forEach(({ texto, intencion, respuesta }) => {
+        if (texto) contexto.push(`la persona envió este mensaje: ${texto}`);
+        if (intencion)
+          contexto.push(
+            `y tu analizaste que tenia esta Intención: ${intencion}`
+          );
+        if (respuesta)
+          contexto.push(`ayudándome a llegar a esta Respuesta: ${respuesta}`);
+      });
 
-    contexto.push(`Mensaje actual clasificarIntencion: ${mensaje}`);
+    contexto.push(
+      `Manteniendo el contexto antes dado, ayudame a analizar y clasificar la intension de la conversación en ayuda del siguiente mensaje: ${mensaje}`,
+      "tener muy presente el contexto, puede que el mensaje a analizar sea corto o ambiguo pero analiza junto con el contexto dado anteriormente"
+    );
 
     const text = contexto.join("\n");
 
@@ -90,6 +102,9 @@ interface EntidadesExtraccion {
   fecha?: string; // formato yyyy-mm-dd
   hora?: string; // formato hh:mm
   servicio?: Types.ObjectId;
+  tipoDocumento?: string;
+  numeroDocumento?: string;
+  nombresCompletos?: string;
   ambiguedad?: boolean;
   solapamiento?: boolean;
   confirmacion?: boolean;
@@ -99,7 +114,8 @@ let serviciosActuales: EntidadesExtraccion[] = [];
 
 export const extraerEntidades = async (
   mensaje: string,
-  entidad?: EntidadesExtraccion
+  entidad?: EntidadesExtraccion,
+  horarios?: any[]
 ): Promise<EntidadesExtraccion> => {
   let PROMPT_EXTRACCION = ``;
 
@@ -139,8 +155,13 @@ export const extraerEntidades = async (
       Extrae y completa:
       {
         "fecha"?: "yyyy-mm-dd", // usa ${hoy} como referencia para interpretar términos relativos ("mañana", "próximo viernes", etc.)
-        "hora"?: "hh:mm",
+        "hora"?: "hh:mm", // solo retornar si dice la hora explicitamente y si está dentro del horario de atención: ${JSON.stringify(
+          horarios
+        )} 
         "servicio"?: "ObjectId" (de la lista anterior),
+        "tipoDocumento"?: string; (de quien será atendido)
+        "numeroDocumento"?: string; (de quien será atendido)
+        "nombresCompletos"?: string; (de quien será atendido)
         "ambiguedad": true si la fecha, hora o servicio no son claros,
         "solapamiento": siempre false,
         "confirmacion": true si el cliente confirma todos los datos explícitamente
@@ -170,6 +191,9 @@ export const extraerEntidades = async (
               fecha: { type: "STRING" },
               hora: { type: "STRING" },
               servicio: { type: "STRING" },
+              tipoDocumento: { type: "STRING" },
+              numeroDocumento: { type: "STRING" },
+              nombresCompletos: { type: "STRING" },
               ambiguedad: { type: "BOOLEAN" },
               solapamiento: { type: "BOOLEAN" },
               confirmacion: { type: "BOOLEAN" },
@@ -191,6 +215,9 @@ export const extraerEntidades = async (
         fecha: r?.fecha || entidad?.fecha!,
         hora: r?.hora || entidad?.hora!,
         servicio: r?.servicio || entidad?.servicio!,
+        tipoDocumento: r?.tipoDocumento || entidad?.tipoDocumento!,
+        numeroDocumento: r?.numeroDocumento || entidad?.numeroDocumento!,
+        nombresCompletos: r?.nombresCompletos || entidad?.nombresCompletos!,
         ambiguedad:
           typeof r?.ambiguedad == "boolean"
             ? r?.ambiguedad

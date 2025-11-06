@@ -21,6 +21,9 @@ export interface IMensaje extends Document {
       fecha?: string;
       hora?: string;
       servicio?: Types.ObjectId;
+      tipoDocumento?: string;
+      numeroDocumento?: string;
+      nombresCompletos?: string;
       ambiguedad?: boolean;
       solapamiento?: boolean;
       confirmacion?: boolean;
