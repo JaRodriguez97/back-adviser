@@ -8,18 +8,18 @@ interface ClasificacionResponse {
   confianza: number;
 }
 
-const PROMPT_CLASIFICACION = `Eres un asistente especializado en clasificar mensajes de WhatsApp para una agenda de citas.
-Clasifica la intención del mensaje en una de estas categorías:
-- agendar: El cliente quiere programar una nueva cita
-- cambiar: El cliente quiere modificar una cita existente
-- cancelar: El cliente quiere cancelar una cita
-- info: El cliente solicita información sobre servicios, horarios o precios
-- otro: El mensaje es ambiguo o requiere atención personalizada
+const PROMPT_CLASIFICACION = `
+Clasifica este mensaje de WhatsApp según su intención.  
+Opciones:
+- agendar → programar una nueva cita  
+- cambiar → modificar una cita existente  
+- cancelar → cancelar una cita  
+- info → pedir información (servicios, precios, horarios)  
+- otro → mensaje ambiguo o fuera de contexto  
 
-{
-  "intencion": "una de las cinco opciones",
-  "confianza": número entre 0 y 1
-}`;
+Devuelve SOLO un JSON con:
+{ "intencion": "<una de las cinco opciones>", "confianza": <número entre 0 y 1> }
+`;
 
 const API_KEY = env.API_KEY;
 const GEMINI_ENDPOINT = `${env.URI_BASE}=${API_KEY}`;
@@ -31,32 +31,19 @@ export const clasificarIntencion = async (
   respuestaPrevia?: string
 ): Promise<ClasificacionResponse> => {
   try {
-    let text = PROMPT_CLASIFICACION;
+    const contexto: string[] = [PROMPT_CLASIFICACION];
 
-    if (intencionPrevia) {
-      text =
-        text +
-        `\n\nLa intención previa detectada era: ${intencionPrevia}. Tenla en cuenta al clasificar el siguiente mensaje.`;
-    }
+    if (textoPrevia) contexto.push(`Mensaje previo: ${textoPrevia}`);
+    if (intencionPrevia) contexto.push(`Intención previa: ${intencionPrevia}`);
+    if (respuestaPrevia) contexto.push(`Respuesta previa: ${respuestaPrevia}`);
 
-    if (textoPrevia) {
-      text =
-        text +
-        `\n\nEl mensaje previo del cliente era: ${textoPrevia}. Tenlo en cuenta al clasificar el siguiente mensaje.`;
-    }
+    contexto.push(`Mensaje actual clasificarIntencion: ${mensaje}`);
 
-    if (respuestaPrevia) {
-      text =
-        text +
-        `\n\nLa respuesta previa dada al cliente fue: ${respuestaPrevia}. Tenla en cuenta al clasificar el siguiente mensaje.`;
-    }
+    const text = contexto.join("\n");
 
-    text = text + `\n\nMensaje a clasificar: ${mensaje}`;
-    const response = await fetch(GEMINI_ENDPOINT as string, {
+    const response = await fetch(GEMINI_ENDPOINT, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts: [{ text }] }],
         generationConfig: {
@@ -80,8 +67,8 @@ export const clasificarIntencion = async (
     const respuestaIA = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
     try {
-      // console.log("🚀 ~ clasificarIntencion ~ respuestaIA:", respuestaIA);
       const clasificacion = JSON.parse(respuestaIA) as ClasificacionResponse;
+      console.log("🚀 ~ clasificarIntencion ~ respuestaIA:", clasificacion);
       return clasificacion;
     } catch {
       // Si hay error al parsear, asumimos que la respuesta es ambigua
@@ -100,7 +87,7 @@ export const clasificarIntencion = async (
 };
 
 interface EntidadesExtraccion {
-  fecha?: string; // formato yyyy/mm/dd
+  fecha?: string; // formato yyyy-mm-dd
   hora?: string; // formato hh:mm
   servicio?: Types.ObjectId;
   ambiguedad?: boolean;
@@ -108,55 +95,69 @@ interface EntidadesExtraccion {
   confirmacion?: boolean;
 }
 
-let PROMPT_EXTRACCION = `Las entidades a completar en base al mensaje son:
-
-{
-  "fecha"?: "yyyy/mm/dd", // ${
-  new Date().toISOString().split("T")[0]
-}= es la fecha de hoy Úsala solo como referencia para determinar la fecha exacta de la cita solicitada (por ejemplo, ‘el próximo miércoles’), pero no como la fecha de la cita.
-  "hora"?: "hh:mm",
-  "servicio"?: "ObjectId", // en base al listado de servicios que se ofrecen
-  "ambiguedad": true si no es claro en la fecha, hora o servicio que desea en este mensaje y segun el contexto (no siempre deben venir los 3 datos en el mismo mensaje), false si todo es claro
-  "solapamiento": false siempre false,
-  "confirmacion": true si el cliente ya ha confirmado los datos de la cita de manera explícita, false si no
-}`;
-  // "solapamiento": true si la nueva información entra en conflicto con datos previos, false si no hay conflicto
-
 let serviciosActuales: EntidadesExtraccion[] = [];
 
 export const extraerEntidades = async (
   mensaje: string,
   entidad?: EntidadesExtraccion
 ): Promise<EntidadesExtraccion> => {
+  let PROMPT_EXTRACCION = ``;
+
   try {
     if (!serviciosActuales.length) {
-      serviciosActuales = await ServicioModel.find({}, { _id: 1, nombre: 1 });
+      serviciosActuales = await ServicioModel.find(
+        {},
+        { _id: 1, nombreServicio: 1 }
+      );
     }
 
-    if (entidad && Object.keys(entidad).length) {
-      PROMPT_EXTRACCION = `${PROMPT_EXTRACCION}
-      Teniendo en cuenta que los datos previos extraídos son:
-      ${JSON.stringify(entidad)}
-      conserva o realiza los ajustes y/o cambios necesarios al analizar el mensaje final manteniendo los datos del json que sean adecuados.`;
+    const vacio = Object.values(entidad!).every(
+      (v) => v === undefined || v === null
+    );
+
+    if (!!entidad && !vacio) {
+      PROMPT_EXTRACCION = `
+        Mantienes un registro de información parcial para agendar una cita. 
+        Tienes una entidad previa (posiblemente incompleta o un objeto vacio):
+        ${JSON.stringify(entidad)}
+
+        Tu tarea es actualizar solo los campos que cambien o se aclaren según el nuevo mensaje.
+        Si el mensaje no menciona un campo, conserva el valor previo.
+        Nunca borres información ya confirmada, salvo que el nuevo mensaje la contradiga explícitamente.
+
+        Devuelve solo el objeto JSON actualizado final, combinando los valores previos con los nuevos.
+        `;
     }
 
-    const response = await fetch(GEMINI_ENDPOINT as string, {
+    const hoy = new Date().toISOString().split("T")[0];
+
+    const text = `
+      ${PROMPT_EXTRACCION}
+
+      Servicios disponibles: ${JSON.stringify(serviciosActuales)}
+
+      Extrae y completa:
+      {
+        "fecha"?: "yyyy-mm-dd", // usa ${hoy} como referencia para interpretar términos relativos ("mañana", "próximo viernes", etc.)
+        "hora"?: "hh:mm",
+        "servicio"?: "ObjectId" (de la lista anterior),
+        "ambiguedad": true si la fecha, hora o servicio no son claros,
+        "solapamiento": siempre false,
+        "confirmacion": true si el cliente confirma todos los datos explícitamente
+      }
+
+      Mensaje del cliente: ${mensaje}
+
+      Responde con el JSON actualizado, combinando lo anterior con la entidad previa.
+      `;
+
+    console.log("🚀 ~ extraerEntidades ~ mensaje:", mensaje);
+
+    const response = await fetch(GEMINI_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: `${PROMPT_EXTRACCION}
-                
-                Servicios actuales: ${JSON.stringify(serviciosActuales)}
-                
-                Mensaje a analizar manteniendo los datos de la entidad que se está creando: ${mensaje}`,
-              },
-            ],
-          },
-        ],
+        contents: [{ parts: [{ text }] }],
         generationConfig: {
           temperature: 0.1,
           topK: 1,
@@ -173,7 +174,7 @@ export const extraerEntidades = async (
               solapamiento: { type: "BOOLEAN" },
               confirmacion: { type: "BOOLEAN" },
             },
-            required: ["ambiguedad"], // solo esto es obligatorio
+            required: ["ambiguedad", "solapamiento", "confirmacion"], // solo esto es obligatorio
           },
         },
       }),
@@ -183,11 +184,26 @@ export const extraerEntidades = async (
     const respuestaIA = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
     try {
-      console.log("🚀 ~ extraerEntidades ~ respuestaIA:", respuestaIA);
       const r = JSON.parse(respuestaIA) as EntidadesExtraccion;
+      console.log("🚀 ~ extraerEntidades ~ respuestaIA:", r);
 
-      r.solapamiento = false;
-      return r;
+      return {
+        fecha: r?.fecha || entidad?.fecha!,
+        hora: r?.hora || entidad?.hora!,
+        servicio: r?.servicio || entidad?.servicio!,
+        ambiguedad:
+          typeof r?.ambiguedad == "boolean"
+            ? r?.ambiguedad
+            : entidad?.ambiguedad!,
+        solapamiento:
+          typeof r?.solapamiento == "boolean"
+            ? r?.solapamiento
+            : entidad?.solapamiento!,
+        confirmacion:
+          typeof r?.confirmacion == "boolean"
+            ? r?.confirmacion
+            : entidad?.confirmacion!,
+      };
     } catch {
       return { ambiguedad: true, solapamiento: false };
     }

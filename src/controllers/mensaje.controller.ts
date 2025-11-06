@@ -11,182 +11,241 @@ import {
 } from "../services/ia.service.js";
 import { generateMessageId } from "../utils/hash.utils.js";
 
-// const API_KEY = env.API_KEY;
-// const GEMINI_ENDPOINT = `${env.URI_BASE}=${API_KEY}`;
+// ==============================
+// Sistema de control de mensajes
+// ==============================
+
+const MAX_MESSAGES_PER_MINUTE = 5;
+const WINDOW_TIME = 60 * 1000;
+const MESSAGE_INTERVAL = WINDOW_TIME / MAX_MESSAGES_PER_MINUTE;
+
+const messageQueue: (() => Promise<
+  Response<any, Record<string, any>> | undefined
+>)[] = [];
+
+setInterval(async () => {
+  if (messageQueue.length === 0) return;
+
+  const processMessage = messageQueue.shift();
+  if (!processMessage) return;
+
+  try {
+    await processMessage();
+  } catch (err) {
+    console.error("Error al procesar mensaje desde la cola:", err);
+  }
+}, MESSAGE_INTERVAL);
+
+function enqueueMessage(
+  fn: () => Promise<Response<any, Record<string, any>> | undefined>
+) {
+  messageQueue.push(fn);
+}
+
+// ==============================
+// Controlador principal
+// ==============================
 
 export const recibirMensaje = async (req: any, res: Response) => {
   try {
     let { tenant_id, telefono, nombre, timestamp, contenido, key } =
         req.body as IMensaje,
-      respuesta;
+      respuesta!: string;
 
-    // Verificar duplicados
-    const message_id = generateMessageId(telefono, timestamp, contenido.texto);
-    const mensajeExistente = await MensajeModel.findOne({
-      message_id,
-      tenant_id: new Types.ObjectId(tenant_id),
-    });
+    enqueueMessage(async () => {
+      try {
+        // Verificar duplicados
+        const message_id = generateMessageId(
+          telefono,
+          timestamp,
+          contenido.texto
+        );
+        const mensajeExistente = await MensajeModel.findOne({
+          message_id,
+          tenant_id: new Types.ObjectId(tenant_id),
+        });
 
-    if (mensajeExistente) {
-      return res.status(204).send();
-    }
+        if (mensajeExistente) {
+          return res.status(204).send();
+        }
 
-    // Clasificar la intención del mensaje y extraer entidades
-    let clasificacion;
-    let entidades: IMensaje["contenido"]["entidades"];
+        // Clasificar la intención del mensaje y extraer entidades
+        let clasificacion;
+        let entidades: IMensaje["contenido"]["entidades"];
 
-    // Verificar si el cliente existe, si no, crearlo
-    let cliente = await ClienteModel.findOne({
-      tenant_id: new Types.ObjectId(tenant_id),
-      telefono,
-    });
+        // Verificar si el cliente existe, si no, crearlo
+        let cliente = await ClienteModel.findOne({
+          tenant_id: new Types.ObjectId(tenant_id),
+          telefono,
+        });
 
-    if (!cliente)
-      cliente = await ClienteModel.create({
-        tenant_id: new Types.ObjectId(tenant_id),
-        telefono,
-        nombre,
-      });
+        if (!cliente)
+          cliente = await ClienteModel.create({
+            tenant_id: new Types.ObjectId(tenant_id),
+            telefono,
+            nombre,
+          });
 
-    // Obtener mensajes anteriores para contexto
-    let cadenaMensajes = await MensajeModel.find({
-      tenant_id: new Types.ObjectId(tenant_id),
-      telefono,
-    }).limit(10);
+        // Obtener mensajes anteriores para contexto
+        let cadenaMensajes = await MensajeModel.find({
+          tenant_id: new Types.ObjectId(tenant_id),
+          telefono,
+        })
+          .limit(10)
+          .sort({ timestamp: -1 });
 
-    let cadenaMensajesfiltrados: { role: string; content: string }[] = [];
+        let cadenaMensajesfiltrados: { role: string; content: string }[] = [];
 
-    if (cadenaMensajes.length) {
-      //* si no existe cadena de mensajes, significa que es cliente nuevoMensaje, por ende, es posible que solo esté saludando, asi que el primero no sería reelevante analizarlo para clasificar ni tampoco la intensión
-      clasificacion = await clasificarIntencion(
-        contenido.texto,
-        cadenaMensajes[cadenaMensajes.length - 1]?.contenido.intencion,
-        cadenaMensajes[cadenaMensajes.length - 1]?.contenido.texto,
-        cadenaMensajes[cadenaMensajes.length - 1]?.respuesta.texto
-      );
+        if (cadenaMensajes.length) {
+          //* si no existe cadena de mensajes, significa que es cliente nuevoMensaje, por ende, es posible que solo esté saludando, asi que el primero no sería reelevante analizarlo para clasificar ni tampoco la intensión
+          clasificacion = await clasificarIntencion(
+            contenido.texto,
+            cadenaMensajes[cadenaMensajes.length - 1]?.contenido.intencion,
+            cadenaMensajes[cadenaMensajes.length - 1]?.contenido.texto,
+            cadenaMensajes[cadenaMensajes.length - 1]?.respuesta.texto
+          );
 
-      if (
-        ["agendar", "cambiar", "cancelar"].includes(clasificacion.intencion)
-      ) {
-        entidades = !cadenaMensajes[cadenaMensajes.length - 1]?.contenido
-          .entidades?.confirmacion
-          ? await extraerEntidades(
-              contenido.texto,
-              cadenaMensajes[cadenaMensajes.length - 1]?.contenido.entidades
-            )
-          : cadenaMensajes[cadenaMensajes.length - 1]?.contenido.entidades;
+          if (
+            ["agendar", "cambiar", "cancelar"].includes(clasificacion.intencion)
+          ) {
+            let contenidoAnterior =
+                cadenaMensajes[cadenaMensajes.length - 1]?.contenido!,
+              e = contenidoAnterior?.entidades;
+
+            if (!e || (!e.fecha && !e.hora && !e.servicio)) {
+              e = [...cadenaMensajes].reverse().find(({ contenido }) => {
+                const en = contenido?.entidades;
+                return en && (en.fecha || en.hora || en.servicio);
+              })?.contenido.entidades || {};
+            }
+
+            entidades =
+              e && !e?.confirmacion
+                ? await extraerEntidades(contenido.texto, e)
+                : e;
+
+            console.log(
+              "🚀 ~ recibirMensaje ~ entidades despues de 'fusion':",
+              entidades
+            );
+          }
+
+          cadenaMensajes.forEach(({ contenido, respuesta }) => {
+            // Construimos una descripción mínima en lenguaje natural, sin JSON ni etiquetas inútiles
+            const partes = [];
+
+            if (contenido.texto) partes.push(`Cliente: ${contenido.texto}`);
+
+            if (contenido.intencion)
+              partes.push(
+                `Intención detectada: ${JSON.stringify(contenido.intencion)}`
+              );
+
+            if (contenido.entidades && Object.keys(contenido.entidades).length)
+              partes.push(
+                `Datos extraídos: ${Object.entries(contenido.entidades)
+                  .map(([k, v]) => `${k}: ${v ?? "?"}`)
+                  .join(", ")}`
+              );
+
+            const textoCompacto = partes.join(". ") + ".";
+
+            cadenaMensajesfiltrados.push({
+              role: "user",
+              content: textoCompacto,
+            });
+
+            cadenaMensajesfiltrados.push({
+              role: "model",
+              content: respuesta.texto,
+            });
+          });
+        }
+
+        let tenant = await TenantModel.aggregate([
+          { $match: { _id: tenant_id } },
+          {
+            $lookup: {
+              from: "servicios", // Nombre exacto de la colección de servicios
+              localField: "_id", // Campo del Tenant que relaciona
+              foreignField: "tenant_id", // Campo en servicios que apunta al Tenant
+              as: "servicios", // Nombre del array resultante
+            },
+          },
+        ]);
+
+        if (!tenant.length) throw new Error("Tenant no encontrado");
+
+        respuesta = await getGeminiReply([
+          {
+            role: "user",
+            content: `
+            Eres EMILY, asistente virtual del negocio: ${JSON.stringify(
+              tenant
+            )}.  
+            Tu función: atender a las personas, ofrecer información, además de agendar o modificar citas.  
+            Responde SIEMPRE (aunque sea breve).  
+            Si el mensaje es saludo → responde cordialmente e invita a contar su necesidad.  
+            Si es multimedia o sticker → di que no puedes procesarlo, pero esperas su texto.  
+            Flujo ideal:  
+            1) Saludo → 2) Detectar necesidad → 3) Si cita: obtener fecha, hora y servicio → 4) Confirmar → 5) Decir que se contactarán pronto.  
+            Usa tono profesional, amable y natural. Puedes usar emojis con criterio.`,
+          },
+          ...cadenaMensajesfiltrados,
+          {
+            role: "user",
+            content:
+              `
+              Responde SOLO texto (sin formato ni estructura).  
+              Mensaje del cliente: "${contenido.texto}".` +
+              (entidades && Object.keys(entidades).length
+                ? ` Entidades a completar: ${JSON.stringify(entidades)}.  
+                    Datos esperados: fecha ("yyyy-mm-dd"), hora ("hh:mm"), servicio (nombre exacto).  
+                    Hoy es ${
+                      new Date().toISOString().split("T")[0]
+                    } (solo referencia para interpretar expresiones como "el próximo miércoles").`
+                : ""),
+          },
+        ]);
+
+        if (clasificacion && clasificacion.intencion) {
+          contenido = {
+            texto: contenido.texto,
+            intencion: clasificacion.intencion,
+          };
+        }
+
+        if (entidades && Object.keys(entidades).length) {
+          contenido = {
+            ...contenido,
+            entidades,
+          };
+        }
+
+        // Crear el registro del mensaje
+        const nuevoMensaje = await MensajeModel.create({
+          tenant_id: new Types.ObjectId(tenant_id),
+          key,
+          nombre,
+          telefono,
+          timestamp,
+          contenido,
+          respuesta: { texto: respuesta },
+          message_id,
+        });
+
+        await nuevoMensaje.save();
+
+        return res.status(201).json({
+          respuesta,
+          mensaje: nuevoMensaje,
+        });
+      } catch (err) {
+        console.error("❌ Error interno al procesar mensaje:", err);
+        return res.status(500).json({
+          error: "Error interno del servidor",
+        });
       }
-
-      cadenaMensajes.forEach(({ contenido, respuesta }) => {
-        contenido.texto = `{
-          texto: ${contenido.texto}, // la respuesta que se le dio al cliente"
-          intencion: ${
-            contenido.intencion && Object.keys(contenido.intencion).length
-              ? JSON.stringify(contenido.intencion)
-              : "ninguno"
-          }, // la intencion detectada en el mensaje del cliente
-          entidades: ${
-            contenido.entidades && Object.keys(contenido.entidades).length
-              ? JSON.stringify(contenido.entidades)
-              : "ninguno"
-          } // las entidades o datos extraidas del mensaje (this.texto o anteriores) del cliente
-        } // esta estructura es solo de contexto para que el modelo entienda mejor la conversación completa hasta el momento, no lo uses para responder con esta estructura`;
-
-        cadenaMensajesfiltrados.push({
-          role: "user",
-          content: contenido.texto,
-        });
-
-        cadenaMensajesfiltrados.push({
-          role: "model",
-          content: respuesta.texto,
-        });
-      });
-    }
-
-    let tenant = await TenantModel.aggregate([
-      { $match: { _id: tenant_id } },
-      {
-        $lookup: {
-          from: "servicios", // Nombre exacto de la colección de servicios
-          localField: "_id", // Campo del Tenant que relaciona
-          foreignField: "tenant_id", // Campo en servicios que apunta al Tenant
-          as: "servicios", // Nombre del array resultante
-        },
-      },
-    ]);
-
-    respuesta = await getGeminiReply([
-      {
-        role: "user",
-        content: `Eres una asistente virtual llamada Emily para la siguiente empresa o negocio: ${JSON.stringify(
-          tenant
-        )}.
-        
-        
-        Trabaja con esos datos para ofrecer la mejor experiencia posible al cliente. si envian stickers o archivos multimedia, responde que no estas habilitado para procesarlos pero que estas atento a su mensaje de texto. si es un saludo, responde muy educadamente ofreciendo tu asistencia. la idea es mitigar a que el cliente exprese inicialmente sus necesidades. si quieres implementa emojis de forma muy profesional y adecuada al contexto sin miedo. nunca dejes un mensaje sin respuesta. incluso, los archivos multimedia debes responder que no estas habilitado para procesarlos pero que estas atento a su mensaje de texto. pero siempre di algo, aunque sea corto.
-        la iea central es que puedas agendar citas, maneja en lo posible este flujo de conversción:
-        1. saludo inicial
-        2. averiguar necesidad del cliente (si es info solo responde sus preguntas en base al contexto del negocio, no inventes datos y se totalmente profesional y educado)
-        3. si es agendar, cambiar o cancelar cita, extrae los datos necesarios (fecha, hora, servicio) y confirma con el cliente
-        4. una vez confirmados todos los datos (fecha, hora, servicio), informa que la solicitud está en proceso y que se comunicaran pronto para confirmar la cita
-        5. despedida cordial`,
-      },
-      ...cadenaMensajesfiltrados,
-      {
-        role: "user",
-        content:
-          `El mensaje que necesito que respondas a partir del anterior contexto es: ${contenido.texto}` +
-          (Boolean(entidades) &&
-          entidades !== undefined &&
-          entidades !== null &&
-          Object.keys(entidades).length
-            ? ` Teniendo en cuenta que Las entidades a completar son: ${JSON.stringify(
-                entidades
-              )}
-            
-            Los datos a extraer son:
-
-              - fecha: "yyyy/mm/dd",  // ${
-                new Date().toISOString().split("T")[0]
-              } = es la fecha de hoy Úsala solo como referencia para determinar la fecha exacta de la cita solicitada (por ejemplo, ‘el próximo miércoles’), pero no como la fecha de la cita.
-              - hora": "hh:mm",
-              - servicio: relacionar con los servicios actuales segun soliciten`
-            : ""),
-      },
-    ]);
-
-    if (clasificacion && clasificacion.intencion) {
-      contenido = {
-        texto: contenido.texto,
-        intencion: clasificacion.intencion,
-      };
-    }
-
-    if (entidades && Object.keys(entidades).length) {
-      contenido = {
-        ...contenido,
-        entidades,
-      };
-    }
-
-    // Crear el registro del mensaje
-    const nuevoMensaje = await MensajeModel.create({
-      tenant_id: new Types.ObjectId(tenant_id),
-      key,
-      nombre,
-      telefono,
-      timestamp,
-      contenido,
-      respuesta: { texto: respuesta },
-      message_id,
-    });
-
-    nuevoMensaje.save();
-
-    res.status(201).json({
-      respuesta,
-      mensaje: nuevoMensaje,
     });
   } catch (error) {
     console.error("Error al procesar mensaje:", error);
