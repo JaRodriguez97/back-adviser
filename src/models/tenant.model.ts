@@ -72,6 +72,9 @@ const TenantSchema = new Schema(
         min: 1,
         max: 30, // máximo 1 mes
       },
+      fechaProximaDisponible: {
+
+      }
     },
     activo: {
       type: Boolean,

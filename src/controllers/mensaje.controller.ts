@@ -6,10 +6,13 @@ import { MensajeModel } from "../models/mensaje.model.js";
 import { TenantModel } from "../models/tenant.model.js";
 import {
   clasificarIntencion,
+  contextoGeneral,
   extraerEntidades,
   getGeminiReply,
 } from "../services/ia.service.js";
 import { generateMessageId } from "../utils/hash.utils.js";
+import { obtenerCitas } from "../services/cita.service.js";
+import type { ICita } from "../interfaces/cita.interface.js";
 
 // ==============================
 // Sistema de control de mensajes
@@ -52,6 +55,23 @@ export const recibirMensaje = async (req: any, res: Response) => {
         req.body as IMensaje,
       respuesta!: string;
 
+    const hoy = new Date();
+
+    // Crear una fecha ajustada a la zona horaria de Colombia
+    const opciones = { timeZone: "America/Bogota" };
+    const fechaColombia = new Date(hoy.toLocaleString("en-US", opciones));
+
+    // Obtener la fecha en formato ISO (YYYY-MM-DD) según hora de Colombia
+    const fechaISO = fechaColombia.toISOString().split("T")[0];
+
+    // Día de la semana en español según hora de Colombia
+    const diaSemana = fechaColombia.toLocaleDateString("es-ES", {
+      weekday: "long",
+      timeZone: "America/Bogota",
+    });
+
+    contextoGeneral.fechaHoy = `Hoy es ${diaSemana} ${fechaISO}`;
+
     enqueueMessage(async () => {
       try {
         // Verificar duplicados
@@ -87,7 +107,7 @@ export const recibirMensaje = async (req: any, res: Response) => {
           });
 
         // Obtener mensajes anteriores para contexto
-        let cadenaMensajes = await MensajeModel.find({
+        contextoGeneral.cadenaMensajes = await MensajeModel.find({
           tenant_id: new Types.ObjectId(tenant_id),
           telefono,
         })
@@ -96,7 +116,7 @@ export const recibirMensaje = async (req: any, res: Response) => {
 
         let cadenaMensajesfiltrados: { role: string; content: string }[] = [];
 
-        let tenant = await TenantModel.aggregate([
+        contextoGeneral.tenant = await TenantModel.aggregate([
           { $match: { _id: tenant_id } },
           {
             $lookup: {
@@ -108,11 +128,12 @@ export const recibirMensaje = async (req: any, res: Response) => {
           },
         ]);
 
-        if (!tenant.length) throw new Error("Tenant no encontrado");
+        if (!contextoGeneral.tenant.length)
+          throw new Error("Tenant no encontrado");
 
-        if (cadenaMensajes.length) {
+        if (contextoGeneral.cadenaMensajes.length) {
           //* si no existe cadena de mensajes, significa que es cliente nuevoMensaje, por ende, es posible que solo esté saludando, asi que el primero no sería reelevante analizarlo para clasificar ni tampoco la intensión
-          let cadenaContenidoIntension = cadenaMensajes.map(
+          let cadenaContenidoIntension = contextoGeneral.cadenaMensajes.map(
             ({ contenido, respuesta }) => ({
               texto: contenido.texto,
               intencion: contenido.intencion,
@@ -127,26 +148,27 @@ export const recibirMensaje = async (req: any, res: Response) => {
           if (
             ["agendar", "cambiar", "cancelar"].includes(clasificacion.intencion)
           ) {
-            let contenidoAnterior =
-                cadenaMensajes[cadenaMensajes.length - 1]?.contenido!,
-              e = contenidoAnterior?.entidades;
+            if (!entidades?.confirmacion)
+              entidades = await extraerEntidades(contenido.texto);
 
-            if (!e || (!e.fecha && !e.hora && !e.servicio)) {
-              e =
-                [...cadenaMensajes].reverse().find(({ contenido }) => {
-                  const en = contenido?.entidades;
-                  return en && (en.fecha || en.hora || en.servicio);
-                })?.contenido.entidades || {};
-            }
+            console.log("🚀 ~ recibirMensaje ~ entidades:", entidades);
 
-            entidades =
-              e && !e?.confirmacion
-                ? await extraerEntidades(contenido.texto, e, tenant[0].horarios)
-                : e;
+            if (
+              entidades &&
+              entidades.fecha &&
+              entidades.servicio &&
+              entidades.tipoDocumento &&
+              entidades.numeroDocumento &&
+              entidades.nombresCompletos
+            )
+              // consultar entidad entre las citas para ver disponibilidad de tiempo y evitar solapamientos
+              contextoGeneral.citasExistentesFecha = await obtenerCitas({
+                tenant_id: new Types.ObjectId(tenant_id),
+                fecha: entidades.fecha,
+              });
           }
 
-          cadenaMensajes.forEach(({ contenido, respuesta }) => {
-            // Construimos una descripción mínima en lenguaje natural, sin JSON ni etiquetas inútiles
+          contextoGeneral.cadenaMensajes.forEach(({ contenido, respuesta }) => {
             const partes = [];
 
             if (contenido.texto) partes.push(`Cliente: ${contenido.texto}`);
@@ -177,40 +199,76 @@ export const recibirMensaje = async (req: any, res: Response) => {
           });
         }
 
-        const hoy = new Date();
-        const fechaISO = hoy.toISOString().split("T")[0];
-        const diaSemana = hoy.toLocaleDateString("es-ES", { weekday: "long" });
+        const inicioPrompt = `
+        Eres Emily, asistente virtual del negocio: ${JSON.stringify(
+          contextoGeneral.tenant
+        )}.
 
-        const textoReferencia = `Hoy es ${diaSemana} ${fechaISO}`;
+        Tu función: atender a las personas, ofrecer información, además de agendar o modificar citas.
+        Usa tono amable y natural. Puedes usar emojis de sobra, imagina que regalan emojis.
+        
+        Y estás hablando con ${
+          nombre
+            ? nombre + " y su numero de telefono es " + telefono
+            : "un cliente nuevo con número de telefono " + telefono
+        }.`;
+        let content = "";
 
-        console.log("Tenant: ", JSON.stringify(tenant));
+        if (contextoGeneral.citasExistentesFecha) {
+          content = `
+            ${inicioPrompt}
+            
+            ya iniciamos el proceso de agendamiento de cita, ya tengo todos los datos necesarios de la posible persona a ser atendida:
+            ${JSON.stringify(entidades)}
+
+            Ahora necesito que me ayudes a:
+            1 -> confirmar la disponibilidad de horas para la fecha solicitada ${
+              entidades?.fecha
+            }, mostrando las horas disponibles como sugerencias: ${
+            contextoGeneral.citasExistentesFecha.length
+              ? JSON.stringify(contextoGeneral.citasExistentesFecha)
+              : "Se buscó en base de datos y No hay citas asignadas para esa fecha"
+          }.
+            2 - > Asegurarse que la persona elija una hora adecuada segun el horario de atención y el solapamiento con otras citas tiene que ser evitado en su totalidad
+            2 - > Luego de que la persona seleccione una hora confirmar todos los datos aportados y la hora seleccionada
+            3 - > solicita que diga "Si confirmo los datos de mi cita" para finalizar el proceso de agendamiento.
+            4 - > cuando ya esté creada la cita le confirmas que ha sido creada con estos datos: ${"aqui deben ir los datos cuando la cita se cree"} y finalmente acompañas el mensaje diciendo que un agente se contactará pronto
+            `;
+        } else {
+          content = `
+            ${inicioPrompt}
+            
+            Si el mensaje es saludo → responde cordialmente e invita a contar su necesidad.  
+            Si es multimedia o sticker → di que no puedes procesarlo, pero esperas su texto.  
+            Flujo ideal:  
+            1) Saludo → 2) Detectar necesidad → 3) Si cita obtener los siguientes datos en 1 mensaje Solicitar:
+            
+            - tipo de documento "CC, TI, CE, PP, etc" (del posible paciente, puede ser diferente de la persona que escribe)
+            - número de documento "sin puntos ni comas" (del posible paciente, puede ser diferente de la persona que escribe)
+            - nombres Completos (del posible paciente, puede ser diferente de la persona que escribe)
+            - fecha que desea el servicio además que se puede interpretar expresiones naturales de tiempo (como ‘el próximo miércoles’ teniendo en cuenta que ${contextoGeneral.fechaHoy} solo como referencia)
+            - servicio 
+
+            todos estos datos necesito que el cliente los responda en 1 solo mensaje, en 1 solo bloque, en una misma interacción
+            `;
+        }
 
         respuesta = await getGeminiReply([
           {
             role: "user",
-            content: `
-            Eres Emily, asistente virtual del negocio: ${JSON.stringify(
-              tenant
-            )}.  
-            Tu función: atender a las personas, ofrecer información, además de agendar o modificar citas.  
-            Responde SIEMPRE (aunque sea breve).  
-            Si el mensaje es saludo → responde cordialmente e invita a contar su necesidad.  
-            Si es multimedia o sticker → di que no puedes procesarlo, pero esperas su texto.  
-            Flujo ideal:  
-            1) Saludo → 2) Detectar necesidad → 3) Si cita obtener los siguientes datos 1 a la vez: → 3.1) fecha (para poder validar disponibilidad de ese día) Hoy es ${textoReferencia} [solo referencia para interpretar expresiones como "el próximo miércoles" o similares]. → 3.2) servicio (para poder validar disponibilidad de ese servicio ese día)  → 3.3) Mostrar disponibilidades segun bbdd (no se captura ningun dato) → 3.4) hora (confirmar segun la disponibilidad) → 4) Confirmar → 5) solicitar tipo y número de documento de quien será atendido  → 6) solicitar nombres y apellidos de quien será atendido → 5) Decir que se contactarán pronto.  
-            Usa tono profesional, amable y natural. Puedes usar emojis con criterio y de sobra, imagina que regalan emojis.`,
+            content,
           },
           ...cadenaMensajesfiltrados,
           {
             role: "user",
-            content:
-              `
-              Responde SOLO texto (sin formato ni estructura).  
-              Mensaje del cliente: "${contenido.texto}".` +
-              (entidades && Object.keys(entidades).length
-                ? ` Entidades a completar: ${JSON.stringify(entidades)}.  
-                    Datos esperados: fecha ("yyyy-mm-dd"), hora ("hh:mm"), servicio (nombre exacto), tipoDocumento, numeroDocumento, nombresCompletos,`
-                : ""),
+            content: `
+             Actualmente hay estos datos
+              ${JSON.stringify(entidades)} 
+              
+              y a continuación el Mensaje de la persona que necesito le des respuesta en base a todo el contexto dado anteriormente: "${
+                contenido.texto
+              }".
+              `,
           },
         ]);
 

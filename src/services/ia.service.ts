@@ -1,15 +1,31 @@
+import type { IMensaje } from "./../interfaces/mensaje.interface.js";
 import { env } from "process";
 import type { IntencionMensaje } from "../interfaces/mensaje.interface.js";
 import type { Types } from "mongoose";
 import { ServicioModel } from "../models/servicio.model.js";
+import type { ITenant } from "../interfaces/tenant.interface.js";
+import type { ICita } from "../interfaces/cita.interface.js";
 
 interface ClasificacionResponse {
   intencion: IntencionMensaje;
   confianza: number;
 }
 
+interface ContextoGeneral {
+  tenant: ITenant[];
+  fechaHoy: string;
+  cadenaMensajes: IMensaje[];
+  citasExistentesFecha?: ICita[];
+}
+
 const API_KEY = env.API_KEY;
 const GEMINI_ENDPOINT = `${env.URI_BASE}=${API_KEY}`;
+
+export const contextoGeneral: ContextoGeneral = {
+  tenant: [],
+  fechaHoy: "",
+  cadenaMensajes: [],
+};
 
 export const clasificarIntencion = async (
   mensaje: string,
@@ -113,12 +129,8 @@ interface EntidadesExtraccion {
 let serviciosActuales: EntidadesExtraccion[] = [];
 
 export const extraerEntidades = async (
-  mensaje: string,
-  entidad?: EntidadesExtraccion,
-  horarios?: any[]
+  mensaje: string
 ): Promise<EntidadesExtraccion> => {
-  let PROMPT_EXTRACCION = ``;
-
   try {
     if (!serviciosActuales.length) {
       serviciosActuales = await ServicioModel.find(
@@ -127,58 +139,85 @@ export const extraerEntidades = async (
       );
     }
 
-    const vacio = Object.values(entidad!).every(
-      (v) => v === undefined || v === null
-    );
+    let arrayPrompts: { role: string; content: string }[] = [],
+      text = `
+      Mantienes un registro de información parcial para agendar una cita. 
 
-    if (!!entidad && !vacio) {
-      PROMPT_EXTRACCION = `
-        Mantienes un registro de información parcial para agendar una cita. 
-        Tienes una entidad previa (posiblemente incompleta o un objeto vacio):
-        ${JSON.stringify(entidad)}
+      Tu tarea es actualizar solo los campos que cambien o se aclaren según el nuevo mensaje.
+      Si el mensaje no menciona un campo, conserva el valor anterior.
+      Nunca borres información ya confirmada, salvo que el nuevo mensaje la contradiga explícitamente.
 
-        Tu tarea es actualizar solo los campos que cambien o se aclaren según el nuevo mensaje.
-        Si el mensaje no menciona un campo, conserva el valor previo.
-        Nunca borres información ya confirmada, salvo que el nuevo mensaje la contradiga explícitamente.
-
-        Devuelve solo el objeto JSON actualizado final, combinando los valores previos con los nuevos.
-        `;
-    }
-
-    const hoy = new Date().toISOString().split("T")[0];
-
-    const text = `
-      ${PROMPT_EXTRACCION}
+      Devuelve solo el objeto JSON actualizado final, combinando los valores previos con los nuevos.
 
       Servicios disponibles: ${JSON.stringify(serviciosActuales)}
 
       Extrae y completa:
       {
-        "fecha"?: "yyyy-mm-dd", // usa ${hoy} como referencia para interpretar términos relativos ("mañana", "próximo viernes", etc.)
-        "hora"?: "hh:mm", // solo retornar si dice la hora explicitamente y si está dentro del horario de atención: ${JSON.stringify(
-          horarios
+        "tipoDocumento": string; (de quien será atendido)
+        "numeroDocumento": string; (de quien será atendido)
+        "nombresCompletos": string; (de quien será atendido)
+        "fecha": "yyyy-mm-dd", // se puede interpretar expresiones naturales de tiempo (como ‘el próximo miércoles’ teniendo en cuenta que ${
+          contextoGeneral.fechaHoy
+        } solo como referencia)
+        "servicio": "ObjectId" (de la lista anterior, se necesita que el cliente diga el nombre del servicio que desea y tu lo relacionas con el _id que coresponda),
+        "hora"?: "hh:mm", // solo retornar si está dentro del horario de atención: ${JSON.stringify(
+          contextoGeneral.tenant[0]?.horarios
         )} 
-        "servicio"?: "ObjectId" (de la lista anterior),
-        "tipoDocumento"?: string; (de quien será atendido)
-        "numeroDocumento"?: string; (de quien será atendido)
-        "nombresCompletos"?: string; (de quien será atendido)
-        "ambiguedad": true si la fecha, hora o servicio no son claros,
-        "solapamiento": siempre false,
-        "confirmacion": true si el cliente confirma todos los datos explícitamente
+        "ambiguedad": true si los datos solicitados no son claros,
+        "solapamiento": true si la fecha y hora solicitadas coinciden con otra cita ya agendada,
+        "confirmacion": true si la persona confirma todos los datos explícitamente con "Si confirmo los datos de mi cita"
       }
 
-      Mensaje del cliente: ${mensaje}
+      teniendo en cuenta las horas disponibles como sugerencias para evitar solapamiento: ${
+        contextoGeneral.citasExistentesFecha?.length
+          ? JSON.stringify(contextoGeneral.citasExistentesFecha)
+          : "Se buscó en base de datos y No hay citas asignadas para esa fecha"
+      }
+        `;
 
-      Responde con el JSON actualizado, combinando lo anterior con la entidad previa.
-      `;
+    arrayPrompts.push({
+      role: "user",
+      content: text,
+    });
 
-    console.log("🚀 ~ extraerEntidades ~ mensaje:", mensaje);
+    [...contextoGeneral.cadenaMensajes]
+      .reverse()
+      .forEach(({ contenido, respuesta }) => {
+        arrayPrompts.push(
+          {
+            role: "user",
+            content: `Mensaje de la persona: ${contenido.texto}`,
+          },
+          {
+            role: "model",
+            content: `Tu respuesta fue: ${
+              JSON.stringify(contenido.entidades) == "{}"
+                ? "No se extrajeron entidades por que el mensaje no aporta información suficiente para extraer datos"
+                : JSON.stringify(contenido.entidades)
+            }
+          
+          ayudando que la respuesta a la persona que se atiende sea: ${
+            respuesta.texto
+          }`,
+          }
+        );
+      });
+
+    arrayPrompts.push({
+      role: "user",
+      content: `último Mensaje de la persona a analizar y extraer los datos de la entidad junto con el contexto: ${mensaje}`,
+    });
+
+    console.log(
+      "🚀 ~ extraerEntidades ~ formatoContents(arrayPrompts):",
+      JSON.stringify(formatoContents(arrayPrompts))
+    );
 
     const response = await fetch(GEMINI_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ parts: [{ text }] }],
+        contents: formatoContents(arrayPrompts),
         generationConfig: {
           temperature: 0.1,
           topK: 1,
@@ -188,17 +227,26 @@ export const extraerEntidades = async (
           responseSchema: {
             type: "OBJECT",
             properties: {
-              fecha: { type: "STRING" },
-              hora: { type: "STRING" },
-              servicio: { type: "STRING" },
               tipoDocumento: { type: "STRING" },
               numeroDocumento: { type: "STRING" },
               nombresCompletos: { type: "STRING" },
+              servicio: { type: "STRING" },
+              fecha: { type: "STRING" },
+              hora: { type: "STRING" },
               ambiguedad: { type: "BOOLEAN" },
               solapamiento: { type: "BOOLEAN" },
               confirmacion: { type: "BOOLEAN" },
             },
-            required: ["ambiguedad", "solapamiento", "confirmacion"], // solo esto es obligatorio
+            required: [
+              "tipoDocumento",
+              "numeroDocumento",
+              "nombresCompletos",
+              "servicio",
+              "fecha",
+              "ambiguedad",
+              "solapamiento",
+              "confirmacion",
+            ],
           },
         },
       }),
@@ -206,45 +254,40 @@ export const extraerEntidades = async (
 
     const data = await response.json();
     const respuestaIA = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    console.log(respuestaIA);
 
-    try {
-      const r = JSON.parse(respuestaIA) as EntidadesExtraccion;
-      console.log("🚀 ~ extraerEntidades ~ respuestaIA:", r);
+    respuestaIA
+      .replace(/```json\s*/gi, "") // elimina ```json o ```JSON
+      .replace(/```/g, "") // elimina los cierres ```
+      .trim();
 
-      return {
-        fecha: r?.fecha || entidad?.fecha!,
-        hora: r?.hora || entidad?.hora!,
-        servicio: r?.servicio || entidad?.servicio!,
-        tipoDocumento: r?.tipoDocumento || entidad?.tipoDocumento!,
-        numeroDocumento: r?.numeroDocumento || entidad?.numeroDocumento!,
-        nombresCompletos: r?.nombresCompletos || entidad?.nombresCompletos!,
-        ambiguedad:
-          typeof r?.ambiguedad == "boolean"
-            ? r?.ambiguedad
-            : entidad?.ambiguedad!,
-        solapamiento:
-          typeof r?.solapamiento == "boolean"
-            ? r?.solapamiento
-            : entidad?.solapamiento!,
-        confirmacion:
-          typeof r?.confirmacion == "boolean"
-            ? r?.confirmacion
-            : entidad?.confirmacion!,
-      };
-    } catch {
-      return { ambiguedad: true, solapamiento: false };
-    }
+    let r = JSON.parse(respuestaIA) as EntidadesExtraccion;
+    console.log("🚀 ~ extraerEntidades ~ respuestaIA:", r);
+
+    r = Object.fromEntries(
+      Object.entries(r).filter(
+        ([_, v]) => v !== "" && v !== null && v !== undefined
+      )
+    );
+
+    return r;
   } catch (error) {
     console.error("Error al extraer entidades:", error);
     return { ambiguedad: true, solapamiento: false };
   }
 };
 
-export const getGeminiReply = async (history: any[] = []) => {
-  const formattedHistory = history.map((msg) => ({
+let formatoContents: (
+  array: any[]
+) => { role: any; parts: { text: any }[] }[] = (array: any[]) => {
+  return array.map((msg) => ({
     role: msg.role,
     parts: [{ text: msg.content }],
   }));
+};
+
+export const getGeminiReply = async (history: any[] = []) => {
+  const formattedHistory = formatoContents(history);
 
   const response = await fetch(GEMINI_ENDPOINT, {
     method: "POST",
