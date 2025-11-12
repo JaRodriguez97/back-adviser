@@ -264,8 +264,8 @@ export const recibirMensaje = async (req: any, res: Response) => {
           content = `
             ${inicioPrompt}
             
-            Si el mensaje es saludo → responde cordialmente e invita a contar su necesidad.  
-            Si es multimedia o sticker → di que no puedes procesarlo, pero esperas su texto.  
+            Sólo Si el Mensaje de la persona que necesito le des respuesta es saludo → responde cordialmente el saludo e invita a contar su necesidad. una vez estén hablando de la necesidad, nos olvidamos del saludo y presentacion.
+            Si es multimedia → di que no puedes procesarlo, pero esperas su texto.  
             Flujo ideal:  
             1) Saludo → 2) Detectar necesidad → 3) Si cita obtener los siguientes datos en 1 mensaje Solicitar:
             

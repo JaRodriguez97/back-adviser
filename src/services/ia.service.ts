@@ -208,10 +208,10 @@ export const extraerEntidades = async (
       content: `último Mensaje de la persona a analizar y extraer los datos de la entidad junto con el contexto: ${mensaje}`,
     });
 
-    console.log(
-      "🚀 ~ extraerEntidades ~ formatoContents(arrayPrompts):",
-      JSON.stringify(formatoContents(arrayPrompts))
-    );
+    // console.log(
+    //   "🚀 ~ extraerEntidades ~ formatoContents(arrayPrompts):",
+    //   JSON.stringify(formatoContents(arrayPrompts))
+    // );
 
     const response = await fetch(GEMINI_ENDPOINT, {
       method: "POST",
@@ -254,7 +254,7 @@ export const extraerEntidades = async (
 
     const data = await response.json();
     const respuestaIA = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    console.log(respuestaIA);
+    // console.log(respuestaIA);
 
     respuestaIA
       .replace(/```json\s*/gi, "") // elimina ```json o ```JSON
@@ -262,7 +262,7 @@ export const extraerEntidades = async (
       .trim();
 
     let r = JSON.parse(respuestaIA) as EntidadesExtraccion;
-    console.log("🚀 ~ extraerEntidades ~ respuestaIA:", r);
+    // console.log("🚀 ~ extraerEntidades ~ respuestaIA:", r);
 
     r = Object.fromEntries(
       Object.entries(r).filter(
