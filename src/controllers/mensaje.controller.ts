@@ -109,8 +109,6 @@ export const recibirMensaje = async (req: any, res: Response) => {
             nombre,
           });
 
-        console.log(cliente._id, typeof cliente._id);
-
         // Obtener mensajes anteriores para contexto
         contextoGeneral.cadenaMensajes = await MensajeModel.find({
           tenant_id: new Types.ObjectId(tenant_id),

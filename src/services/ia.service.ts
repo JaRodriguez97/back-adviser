@@ -153,14 +153,14 @@ export const extraerEntidades = async (
 
       Extrae y completa:
       {
-        "tipoDocumento": string; (de quien será atendido)
-        "numeroDocumento": string; (de quien será atendido)
-        "nombresCompletos": string; (de quien será atendido)
-        "fecha": "yyyy-mm-dd", // se puede interpretar expresiones naturales de tiempo (como ‘el próximo miércoles’ teniendo en cuenta que ${
+        "tipoDocumento": "string" || ""; (de quien será atendido)
+        "numeroDocumento": "string" || ""; (de quien será atendido)
+        "nombresCompletos": "string" || ""; (de quien será atendido)
+        "fecha": "yyyy-mm-dd" || "", // se puede interpretar expresiones naturales de tiempo (como ‘el próximo miércoles’ teniendo en cuenta que ${
           contextoGeneral.fechaHoy
         } solo como referencia)
-        "servicio": "ObjectId" (de la lista anterior, se necesita que el cliente diga el nombre del servicio que desea y tu lo relacionas con el _id que coresponda),
-        "hora"?: "hh:mm", // solo retornar si está dentro del horario de atención: ${JSON.stringify(
+        "servicio": "ObjectId" || "" (de la lista anterior, se necesita que el cliente diga el nombre del servicio que desea y tu lo relacionas con el _id que coresponda),
+        "hora"?: "hh:mm" || "", // solo retornar si está dentro del horario de atención: ${JSON.stringify(
           contextoGeneral.tenant[0]?.horarios
         )} 
         "ambiguedad": true si los datos solicitados no son claros,
