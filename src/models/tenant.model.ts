@@ -73,8 +73,8 @@ const TenantSchema = new Schema(
         max: 30, // máximo 1 mes
       },
       fechaProximaDisponible: {
-
-      }
+        type: Date,
+      },
     },
     activo: {
       type: Boolean,
@@ -89,6 +89,7 @@ const TenantSchema = new Schema(
 
 // Índices
 TenantSchema.index({ rubro: 1 });
+TenantSchema.index({ "politicas.fechaProximaDisponible": 1 });
 TenantSchema.index({ "contacto.telefono": 1 }, { unique: true });
 
 // Middleware para formatear el número de WhatsApp

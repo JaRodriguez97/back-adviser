@@ -14,6 +14,21 @@ const CitaSchema = new Schema(
       ref: "Cliente",
       required: true,
     },
+    tipoDocumento: {
+      type: String,
+      trim: true,
+      required: true,
+    },
+    numeroDocumento: {
+      type: String,
+      trim: true,
+      required: true,
+    },
+    nombresCompletos: {
+      type: String,
+      trim: true,
+      required: true,
+    },
     servicios_id: [
       {
         type: Schema.Types.ObjectId,
@@ -56,11 +71,6 @@ const CitaSchema = new Schema(
       required: true,
       enum: ["confirmada", "pendiente", "cancelada"],
       default: "pendiente",
-    },
-    recurso_id: {
-      type: Schema.Types.ObjectId,
-      ref: "Recurso",
-      required: true,
     },
   },
   {

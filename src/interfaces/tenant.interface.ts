@@ -14,6 +14,7 @@ export interface ITenant extends Document {
   politicas: {
     cancelacion_min_horas: number;
     max_adelanto_dias: number;
+    fechaProximaDisponible: Date;
   };
   activo: boolean;
   createdAt?: Date;

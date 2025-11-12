@@ -4,7 +4,7 @@ import { Types, type FilterQuery } from "mongoose";
 import { addMinutes, parse, format } from "date-fns";
 import { ServicioModel } from "../models/servicio.model.js";
 
-export const crearCita = async (data: ICita) => {
+export const crearCita = async (data: FilterQuery<ICita>) => {
   const { servicios_id, hora_inicio } = data;
 
   // Supón que el servicio tiene campo "duracion" en minutos

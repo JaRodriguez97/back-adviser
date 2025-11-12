@@ -11,8 +11,11 @@ import {
   getGeminiReply,
 } from "../services/ia.service.js";
 import { generateMessageId } from "../utils/hash.utils.js";
-import { obtenerCitas } from "../services/cita.service.js";
+import { obtenerCitas, crearCita } from "../services/cita.service.js";
 import type { ICita } from "../interfaces/cita.interface.js";
+import { CitaModel } from "../models/cita.model.js";
+import type { ICliente } from "../interfaces/cliente.interface.js";
+import { proximoEspacioLibre } from "../services/tenant.service.js";
 
 // ==============================
 // Sistema de control de mensajes
@@ -94,7 +97,7 @@ export const recibirMensaje = async (req: any, res: Response) => {
         let entidades: IMensaje["contenido"]["entidades"];
 
         // Verificar si el cliente existe, si no, crearlo
-        let cliente = await ClienteModel.findOne({
+        let cliente: ICliente | null = await ClienteModel.findOne({
           tenant_id: new Types.ObjectId(tenant_id),
           telefono,
         });
@@ -105,6 +108,8 @@ export const recibirMensaje = async (req: any, res: Response) => {
             telefono,
             nombre,
           });
+
+        console.log(cliente._id, typeof cliente._id);
 
         // Obtener mensajes anteriores para contexto
         contextoGeneral.cadenaMensajes = await MensajeModel.find({
@@ -212,9 +217,28 @@ export const recibirMensaje = async (req: any, res: Response) => {
             ? nombre + " y su numero de telefono es " + telefono
             : "un cliente nuevo con número de telefono " + telefono
         }.`;
-        let content = "";
+        let content = "",
+          citaNew;
 
         if (contextoGeneral.citasExistentesFecha) {
+          if (entidades && entidades.confirmacion) {
+            citaNew = await crearCita({
+              tenant_id: new Types.ObjectId(tenant_id),
+              cliente_id: cliente._id as Types.ObjectId,
+              servicios_id: [new Types.ObjectId(entidades.servicio!)],
+              fecha: entidades.fecha!,
+              hora_inicio: entidades.hora!,
+              tipoDocumento: entidades.tipoDocumento!,
+              numeroDocumento: entidades.numeroDocumento!,
+              nombresCompletos: entidades.nombresCompletos!,
+            });
+          }
+
+          // await proximoEspacioLibre(
+          //   new Date().toISOString().split("T")[0]!,
+          //   contextoGeneral.tenant[0]?.horarios,
+          //   contextoGeneral.tenant[0]?.horarios
+          // );
           content = `
             ${inicioPrompt}
             
@@ -232,7 +256,9 @@ export const recibirMensaje = async (req: any, res: Response) => {
             2 - > Asegurarse que la persona elija una hora adecuada segun el horario de atención y el solapamiento con otras citas tiene que ser evitado en su totalidad
             2 - > Luego de que la persona seleccione una hora confirmar todos los datos aportados y la hora seleccionada
             3 - > solicita que diga "Si confirmo los datos de mi cita" para finalizar el proceso de agendamiento.
-            4 - > cuando ya esté creada la cita le confirmas que ha sido creada con estos datos: ${"aqui deben ir los datos cuando la cita se cree"} y finalmente acompañas el mensaje diciendo que un agente se contactará pronto
+            4 - > cuando ya esté creada la cita le confirmas que ha sido creada con estos datos: ${JSON.stringify(
+              citaNew
+            )} y finalmente acompañas el mensaje diciendo que un agente se contactará pronto
             `;
         } else {
           content = `

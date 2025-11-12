@@ -4,6 +4,9 @@ import express from "express";
 import morgan from "morgan";
 import { connectDB } from "./config/database.js";
 import mensajeRoutes from "./routes/mensaje.routes.js";
+import cron from "node-cron";
+// import { proximoEspacioLibre } from "./services/tenant.service.js";
+
 
 // Cargar variables de entorno
 config();
@@ -42,4 +45,26 @@ app.use("/v1/messages", mensajeRoutes);
 // Iniciar servidor
 app.listen(PORT, () =>
   console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`)
+);
+
+cron.schedule(
+  "0 0 * * *",
+  async () => {
+    const ahora = new Date();
+    console.log("🔄 Ejecutando actualización de fecha disponible...");
+    console.log(
+      `🕛 Hora local: ${ahora.toLocaleString("es-CO", {
+        timeZone: "America/Bogota",
+      })}`
+    );
+    console.log(`🌍 Hora UTC: ${ahora.toUTCString()}`);
+
+    try {
+      // await proximoEspacioLibre();
+      console.log("✅ Fecha actualizada correctamente");
+    } catch (error) {
+      console.error("❌ Error actualizando fecha disponible:", error);
+    }
+  },
+  { timezone: "America/Bogota" }
 );
