@@ -41,9 +41,9 @@ const CitaSchema = new Schema(
       required: true,
       validate: {
         validator: function (v: string) {
-          return /^\d{4}\/\d{2}\/\d{2}$/.test(v);
+          return /^\d{4}-\d{2}-\d{2}$/.test(v);
         },
-        message: "El formato de fecha debe ser YYYY/MM/DD",
+        message: "El formato de fecha debe ser YYYY-MM-DD",
       },
     },
     hora_inicio: {
