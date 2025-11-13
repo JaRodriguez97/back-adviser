@@ -26,7 +26,6 @@ export const obtenerCitas = async (filtro: FilterQuery<ICita> = {}) => {
       .populate("tenant_id", "nombre")
       .populate("cliente_id", "nombre telefono")
       .populate("servicios_id", "nombre duracion")
-      .populate("recurso_id", "nombre tipo")
       .sort({ fecha: 1, hora_inicio: 1 })
       .lean();
   } catch (error: any) {
@@ -43,7 +42,6 @@ export const obtenerCitaPorId = async (id: string) => {
       .populate("tenant_id", "nombre")
       .populate("cliente_id", "nombre telefono")
       .populate("servicios_id", "nombre duracion")
-      .populate("recurso_id", "nombre tipo");
 
     if (!cita) throw new Error("Cita no encontrada");
     return cita;
@@ -105,30 +103,5 @@ export const cambiarEstado = async (
     return cita;
   } catch (error: any) {
     throw new Error(`Error al cambiar el estado de la cita: ${error.message}`);
-  }
-};
-
-/** Verificar disponibilidad del recurso en una fecha y hora */
-export const verificarDisponibilidad = async (
-  recurso_id: string,
-  fecha: string,
-  hora_inicio: string,
-  hora_fin: string
-) => {
-  try {
-    const citas = await CitaModel.find({
-      recurso_id,
-      fecha,
-      $or: [
-        {
-          hora_inicio: { $lt: hora_fin },
-          hora_fin: { $gt: hora_inicio },
-        },
-      ],
-    });
-
-    return citas.length === 0; // true si está disponible
-  } catch (error: any) {
-    throw new Error(`Error al verificar disponibilidad: ${error.message}`);
   }
 };

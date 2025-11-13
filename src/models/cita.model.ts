@@ -81,7 +81,6 @@ const CitaSchema = new Schema(
 
 // Índices
 CitaSchema.index({ tenant_id: 1, hora_inicio: 1 });
-CitaSchema.index({ tenant_id: 1, recurso_id: 1, hora_inicio: 1 });
 
 // Middleware para validar que hora_fin sea mayor que hora_inicio
 CitaSchema.pre("save", function (next) {
